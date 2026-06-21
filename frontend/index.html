@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>番茄小说发布同步助手</title>
+    <link rel="icon" type="image/x-icon" href="../logo.ico" />
+    <link rel="stylesheet" href="assets/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <div class="system-titlebar">
+        <div class="system-title"><span class="system-dot"></span> FANQIE NOVEL PUBLISH SYNC ASSISTANT | LOCAL TOOL</div>
+      </div>
+
+      <header class="top-header">
+        <div class="brand-menu-wrap no-drag">
+          <button class="brand-button" id="brandButton" type="button" aria-haspopup="true" aria-expanded="false">
+            <span class="brand-mark"></span>
+            <span class="brand-text">FANQIE NOVEL PUBLISH SYNC ASSISTANT</span>
+            <span class="brand-separator" aria-hidden="true">|</span>
+            <span class="brand-mode" id="brandModeText">LOCAL TOOL</span>
+          </button>
+          <div class="page-menu" id="pageMenu" aria-label="页面选择">
+            <button data-page="auto_publish">番茄发布</button>
+            <button data-page="chapter_sync">番茄同步</button>
+          </div>
+        </div>
+
+
+        <div class="header-actions no-drag">
+          <button class="header-btn" id="themeButton" type="button">外观偏好</button>
+          <button class="header-btn" id="resetDataButton" type="button">重置数据</button>
+          <button class="header-btn" id="loginButton" type="button">账号登录</button>
+          <div class="status-badge" id="statusBadge"><i></i> 就绪</div>
+        </div>
+      </header>
+
+      <main class="page-host" id="pageHost"></main>
+    </div>
+
+    <div class="theme-modal" id="themeModal" aria-hidden="true">
+      <div class="theme-box">
+        <div class="theme-head">
+          <b>系统外观定制</b>
+          <button id="themeClose" type="button">×</button>
+        </div>
+        <div class="theme-grid">
+          <button data-theme="blue"><i class="blue"></i><span>企业蓝</span></button>
+          <button data-theme="black"><i class="black"></i><span>极夜黑</span></button>
+          <button data-theme="emerald"><i class="emerald"></i><span>薄荷绿</span></button>
+          <button data-theme="amber"><i class="amber"></i><span>事务金</span></button>
+          <button data-theme="rose"><i class="rose"></i><span>玫瑰粉</span></button>
+          <button data-theme="violet"><i class="violet"></i><span>深空紫</span></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="theme-modal" id="loginModal" aria-hidden="true">
+      <div class="theme-box login-box">
+        <div class="theme-head">
+          <b>番茄账号登录</b>
+          <button id="loginClose" type="button">×</button>
+        </div>
+        <div class="login-actions">
+          <button class="primary-btn" id="loginStart" type="button">打开登录页面</button>
+          <button class="soft-btn" id="loginImport" type="button">导入登录状态</button>
+          <button class="soft-btn" id="loginReset" type="button">清除登录状态</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="assets/bundle.js"></script>
+  </body>
+</html>

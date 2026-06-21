@@ -1,0 +1,15 @@
+[project]
+name = "fanqie-publish-sync-assistant"
+version = "1.0.0"
+description = "番茄发布同步助手"
+requires-python = ">=3.10"
+dependencies = [
+  "pywebview>=5.0",
+  "playwright>=1.44.0",
+  "platformdirs>=4.0",
+  "pydantic>=2.8",
+  "pyinstaller>=6.0"
+]
+
+[tool.ruff]
+line-length = 120
