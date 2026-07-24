@@ -1,0 +1,85 @@
+.primary-btn, .soft-btn, .ghost-btn, .mini-btn,
+.big-action, .big-action.primary-action, .ww-action-btn, .ww-action-btn.ww-primary, .ww-action-btn.ww-danger {
+  background: linear-gradient(180deg, #fff, #f8fafc);
+  border-color: #e2e8f0;
+  color: #334155;
+  box-shadow: none;
+}
+.big-action span, .big-action.primary-action span, .ww-stop-action span {
+  background: #f1f5f9;
+  color: #334155;
+}
+.primary-btn:hover, .soft-btn:hover, .ghost-btn:hover, .mini-btn:hover,
+.big-action:hover, .big-action.primary-action:hover, .ww-action-btn:hover, .ww-action-btn.ww-primary:hover, .ww-action-btn.ww-danger:hover {
+  border-color: #cbd5e1;
+  color: #334155;
+}
+
+.source-file-picker {
+  position: relative;
+}
+.source-file-picker.source-picker-open {
+  overflow: visible;
+  z-index: 30;
+}
+.source-picker-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.source-picker-caret {
+  font-size: 10px;
+  transition: transform .16s ease;
+}
+.source-picker-open .source-picker-caret {
+  transform: rotate(180deg);
+}
+.source-picker-menu {
+  position: absolute;
+  top: calc(100% + 7px);
+  left: 0;
+  right: 0;
+  z-index: 100;
+  width: 100%;
+  min-width: 0;
+  padding: 5px;
+  border: 1px solid #e2e8f0;
+  border-radius: 13px;
+  background: #f8fafc;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, .13);
+  font-family: "Outfit", "Inter", "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
+  font-size: var(--control-font-size);
+  font-weight: var(--control-font-weight);
+}
+.source-picker-menu[hidden] {
+  display: none;
+}
+.source-picker-menu button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: var(--control-height);
+  padding: 0 13px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: #334155;
+  text-align: left;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: 1.2;
+  cursor: pointer;
+}
+.source-picker-menu button + button {
+  margin-top: 2px;
+}
+.source-picker-menu button:hover,
+.source-picker-menu button:focus-visible {
+  outline: none;
+  border-color: rgb(var(--accent-100));
+  background: rgb(var(--accent-50));
+  color: rgb(var(--accent-700));
+}

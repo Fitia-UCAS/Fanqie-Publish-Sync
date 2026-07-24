@@ -429,6 +429,7 @@
   };
 })();
 
+
 (function () {
   window.NovelFanqieAccountMethods = {
     bindFanqiePickerMenu(button, picker, options, onSelect) {

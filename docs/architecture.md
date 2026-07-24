@@ -52,3 +52,9 @@
 - 定时发布继续按流程编排、开关、日期和时间拆分，日期与时间定位细节不泄漏给提交状态流。
 - `pages/editor.py` 是编辑器公开门面；章节导航、字段识别、内容写入和草稿保存分别位于独立模块。
 - 生产代码继续通过公开门面导入；兼容门面不承载页面实现，页面及弹窗模块原则上保持在 450 行以内。
+
+## 前端模块
+
+- `assets/styles.css` 只作为样式入口，按 shell、workspace、terminal、legacy-tools 和 controls 顺序加载源模块。
+- `core/task_panel.js` 负责通用任务状态与日志面板，`core/fanqie_task_actions.js` 负责番茄页面绑定和载荷收集。
+- `assets/bundle.js` 是提交到仓库的生成产物，测试必须验证它与 `tools/bundle_js.py` 声明的源文件完全一致。

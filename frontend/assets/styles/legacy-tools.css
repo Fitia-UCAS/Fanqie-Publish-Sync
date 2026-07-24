@@ -1,0 +1,223 @@
+
+.system-dot {
+  width: 18px !important;
+  height: 18px !important;
+  border-radius: 6px !important;
+  background: url("../../../logo.png") center / contain no-repeat !important;
+  box-shadow: 0 6px 12px rgba(15, 23, 42, .12) !important;
+}
+
+.brand-mark {
+  flex: 0 0 auto !important;
+  width: 44px !important;
+  height: 44px !important;
+  border-radius: 12px !important;
+  background: url("../../../logo.png") center / contain no-repeat !important;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, .10) !important;
+}
+
+.brand-mode {
+  max-width: none !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: nowrap !important;
+}
+
+.brand-menu-wrap {
+  max-width: calc(100vw - 520px) !important;
+}
+
+.brand-button {
+  max-width: 100% !important;
+}
+.terminal-log.result-text {
+  color: #e2e8f0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.75;
+  user-select: text;
+}
+
+.current-plot-form { gap: 15px; }
+.cp-section-title {
+  margin-top: 2px;
+  padding-top: 12px;
+  border-top: 1px solid #eef2f7;
+  color: #0f172a;
+  font-size: var(--control-font-size);
+  font-weight: 900;
+  letter-spacing: .04em;
+}
+.cp-mode-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 9px;
+}
+.cp-mode-card,
+.cp-check-card {
+  min-height: var(--control-height);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 13px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: var(--control-font-size);
+  font-weight: var(--control-font-weight);
+  line-height: 1.25;
+  cursor: pointer;
+  user-select: none;
+}
+.cp-mode-card:hover,
+.cp-check-card:hover { border-color: #cbd5e1; background: #fff; }
+.cp-mode-card input,
+.cp-check-card input {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  accent-color: rgb(var(--accent-600));
+}
+.cp-mode-card span,
+.cp-check-card span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cp-mode-card:has(input:checked),
+.cp-check-card:has(input:checked) {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: rgb(var(--accent-700));
+}
+
+.webnovel-writer-layout .webnovel-writer-card textarea.textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+.ww-panel-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 0 10px;
+  color: #334155;
+}
+.ww-panel-title b {
+  font-size: 15px;
+  line-height: 1.2;
+}
+.ww-panel-title span {
+  min-width: 0;
+  color: #94a3b8;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ww-actions-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.ww-actions-grid .big-action {
+  padding: 0 10px;
+}
+.ww-actions-grid .big-action small {
+  display: none;
+}
+.webnovel-writer-card {
+  border-radius: 18px;
+  overflow: hidden;
+}
+@media (min-width: 1400px) {
+  .ww-actions-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+
+.webnovel-writer-card { border-radius: 18px; overflow: hidden; }
+.webnovel-writer-layout .settings-body { padding-top: 18px; }
+.ww-panel-title { display: none !important; }
+.ww-form { gap: 12px; }
+.ww-link-btn {
+  width: 100%;
+  height: var(--button-height);
+  border-radius: 13px;
+  border: 1px solid #e2e8f0;
+  background: linear-gradient(180deg, #fff, #f8fafc);
+  color: #334155;
+  font-size: var(--control-font-size);
+  font-weight: 900;
+  cursor: pointer;
+}
+.ww-link-btn:hover,
+.ww-action-btn:hover { border-color: #cbd5e1; transform: translateY(-1px); }
+.ww-check { margin: 0; }
+.ww-plan-row { align-items: end; }
+.ww-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.ww-action-btn {
+  min-width: 0;
+  width: 100%;
+  height: var(--button-height);
+  min-height: var(--button-height);
+  border: 1px solid #e2e8f0;
+  background: linear-gradient(180deg, #fff, #f8fafc);
+  color: #334155;
+  border-radius: 13px;
+  padding: 0 12px;
+  text-align: center;
+  font-size: var(--control-font-size);
+  font-weight: 900;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.ww-action-btn.ww-primary {
+  background: linear-gradient(180deg, #fff, #f8fafc);
+  border-color: #e2e8f0;
+  color: #334155;
+}
+.ww-action-btn.ww-danger {
+  background: linear-gradient(180deg, #fff, #f8fafc);
+  border-color: #e2e8f0;
+  color: #334155;
+}
+
+.webnovel-writer-layout { align-items: start; }
+.webnovel-writer-layout .webnovel-writer-card { max-height: var(--settings-panel-height); }
+.status-badge { max-width: min(360px, 38vw); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status-badge i { flex: 0 0 auto; }
+
+
+.webnovel-writer-layout .settings-body { padding: 22px 24px 24px; }
+.webnovel-writer-card { border-radius: var(--panel-radius); overflow: hidden; }
+.ww-form { gap: 14px; }
+.ww-full-action { width: 100%; }
+.ww-plan-row { align-items: end; }
+.ww-plan-row .big-action { height: var(--button-height); min-height: var(--button-height); }
+.ww-actions-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ww-actions-grid .big-action { padding: 0 10px; }
+.ww-stop-action { border-color: #e2e8f0; color: #334155; }
+.ww-stop-action span { background: #fef2f2; color: #dc2626; }
+.ww-check { margin: 0; }
+.webnovel-writer-layout { align-items: stretch; }
+.webnovel-writer-layout .webnovel-writer-card { max-height: var(--settings-panel-height); }
+
+.webnovel-writer-layout .settings-body { padding: 22px 24px 24px; }
+.webnovel-writer-card { border-radius: var(--panel-radius); overflow: hidden; }
+.ww-form { gap: 14px; }
+.ww-form .section-line { display: none !important; }
+.ww-full-action { width: 100%; }
+.ww-actions-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ww-actions-grid .big-action { padding: 0 10px; }
+.ww-actions-grid .big-action span { font-size: var(--control-font-size); }
+.ww-stop-action { border-color: #e2e8f0; color: #334155; }
+.ww-stop-action span { background: #f1f5f9; color: #334155; }
+.ww-check { margin: 0; }
