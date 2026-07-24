@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 from typing import Callable
 
+from backend.infrastructure.files.storage import write_text
 from backend.platforms.fanqie.publishing.local_source import Chapter
 from backend.features.novel_processing.text_normalizer import normalize_novel_body
 from backend.runtime.paths import PUBLISH_TRACKER_DIR
@@ -25,8 +26,12 @@ def _write_publish_snapshot(chapter_no: int, local: Chapter) -> Path:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
     directory = PUBLISH_TRACKER_DIR / "chapters" / f"chapter_{chapter_no:03d}" / ts
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / "local.txt").write_text(f"标题：{local.subtitle}\n完整标题：{local.full_title}\n\n{normalize_novel_body(local.content)}\n", encoding="utf-8")
-    (directory / "meta.txt").write_text(
+    write_text(
+        directory / "local.txt",
+        f"标题：{local.subtitle}\n完整标题：{local.full_title}\n\n{normalize_novel_body(local.content)}\n",
+    )
+    write_text(
+        directory / "meta.txt",
         "\n".join([
             f"chapter_no={chapter_no}",
             f"time={datetime.now().isoformat(timespec='seconds')}",
@@ -34,7 +39,6 @@ def _write_publish_snapshot(chapter_no: int, local: Chapter) -> Path:
             f"full_title={local.full_title}",
             "",
         ]),
-        encoding="utf-8",
     )
     return directory
 

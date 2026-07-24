@@ -42,3 +42,15 @@ def test_config_repository_migrates_legacy_sections_and_removes_unknown_keys(tmp
     assert config["auto_publish"]["novelFile"] == "legacy.txt"
     assert "unknown" not in config["auto_publish"]
     assert "unknownRoot" not in config
+
+
+def test_config_repository_recovers_corrupted_config_from_backup(tmp_path: Path) -> None:
+    repository = ConfigRepository(tmp_path / "config.json")
+    repository.save({"auto_publish": {"novelFile": "stable.txt"}})
+    repository.save({"auto_publish": {"novelFile": "newer.txt"}})
+    repository.path.write_text("{broken", encoding="utf-8")
+
+    config = repository.load()
+
+    assert config["auto_publish"]["novelFile"] == "stable.txt"
+    assert repository.load()["auto_publish"]["novelFile"] == "stable.txt"

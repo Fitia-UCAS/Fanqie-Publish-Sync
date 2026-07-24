@@ -10,6 +10,8 @@ from itertools import count
 from pathlib import Path
 from typing import Any, ClassVar
 
+from backend.infrastructure.files.storage import atomic_write_text
+from backend.runtime.logging import get_logger
 from backend.runtime.paths import (
     BROWSER_DATA_DIR,
     CHAPTER_SYNC_DEBUG_DIR,
@@ -23,6 +25,7 @@ from backend.runtime.settings import RuntimeSettings
 Page = Any
 
 _DEBUG_COUNTER = count(1)
+LOGGER = get_logger(__name__)
 
 
 @dataclass(slots=True)
@@ -154,11 +157,16 @@ class BrowserSession:
         try:
             self.auth_state_file.parent.mkdir(parents=True, exist_ok=True)
             try:
-                self.context.storage_state(path=str(self.auth_state_file), indexed_db=True)
+                state = self.context.storage_state(indexed_db=True)
             except TypeError:
-                self.context.storage_state(path=str(self.auth_state_file))
+                state = self.context.storage_state()
+            atomic_write_text(
+                self.auth_state_file,
+                json.dumps(state, ensure_ascii=False, indent=2),
+                backup_path=self.auth_state_file.with_name(f"{self.auth_state_file.name}.bak"),
+            )
         except Exception:
-            pass
+            LOGGER.exception("保存番茄登录状态失败：%s", self.auth_state_file)
 
     def __enter__(self) -> "BrowserSession":
         return self
@@ -286,6 +294,25 @@ def save_failure_debug(page: Page, name: str, *, category: str | None = None) ->
     capture.save_failure(page, name)
 
 
+def page_failure_context(
+    page: Page,
+    stage: str,
+    *,
+    locator: str = "",
+    error: BaseException | None = None,
+) -> str:
+    try:
+        url = str(getattr(page, "url", "") or "<unknown>")
+    except Exception:
+        url = "<unavailable>"
+    details = [f"阶段={stage}", f"URL={url}"]
+    if locator:
+        details.append(f"定位器={locator}")
+    if error is not None:
+        details.append(f"异常={type(error).__name__}: {error}")
+    return "；".join(details)
+
+
 _FALLBACK_DEBUG_CAPTURES: dict[str, DebugCapture] = {}
 
 
@@ -411,13 +438,21 @@ def active_auth_state_file() -> Path:
 
 
 def _load_accounts() -> dict[str, Any]:
-    if FANQIE_ACCOUNTS_FILE.exists():
+    backup_path = FANQIE_ACCOUNTS_FILE.with_name(f"{FANQIE_ACCOUNTS_FILE.name}.bak")
+    for candidate in (FANQIE_ACCOUNTS_FILE, backup_path):
+        if not candidate.exists():
+            continue
         try:
-            data = json.loads(FANQIE_ACCOUNTS_FILE.read_text(encoding="utf-8"))
+            data = json.loads(candidate.read_text(encoding="utf-8"))
             if isinstance(data, dict):
+                if candidate == backup_path:
+                    atomic_write_text(
+                        FANQIE_ACCOUNTS_FILE,
+                        json.dumps(data, ensure_ascii=False, indent=2),
+                    )
                 return data
-        except Exception:
-            pass
+        except (OSError, json.JSONDecodeError):
+            LOGGER.warning("无法读取番茄账号索引：%s", candidate, exc_info=True)
     return {"active_id": _DEFAULT_ACCOUNT_ID, "accounts": [_default_account()]}
 
 
@@ -428,7 +463,11 @@ def _save_accounts(data: dict[str, Any]) -> None:
     active_id = str(data.get("active_id") or _DEFAULT_ACCOUNT_ID)
     if active_id not in {item["id"] for item in accounts}:
         active_id = accounts[0]["id"] if accounts else _DEFAULT_ACCOUNT_ID
-    FANQIE_ACCOUNTS_FILE.write_text(json.dumps({"active_id": active_id, "accounts": accounts}, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_text(
+        FANQIE_ACCOUNTS_FILE,
+        json.dumps({"active_id": active_id, "accounts": accounts}, ensure_ascii=False, indent=2),
+        backup_path=FANQIE_ACCOUNTS_FILE.with_name(f"{FANQIE_ACCOUNTS_FILE.name}.bak"),
+    )
 
 
 def _normalize_accounts(raw: Any) -> list[dict[str, str]]:
@@ -484,6 +523,7 @@ __all__ = [
     "add_account",
     "delete_account",
     "list_accounts",
+    "page_failure_context",
     "resolve_auth_state_file",
     "save_debug",
     "save_failure_debug",

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 
+import os
 import re
 import shutil
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable
@@ -50,10 +52,46 @@ def read_text_and_encoding(path: str | Path, encodings: Iterable[str] | None = N
 
 
 def write_text(path: str | Path, text: str, encoding: str = "utf-8", newline: str = "") -> Path:
+    return atomic_write_text(path, text, encoding=encoding, newline=newline)
+
+
+def atomic_write_text(
+    path: str | Path,
+    text: str,
+    *,
+    encoding: str = "utf-8",
+    newline: str = "",
+    backup_path: str | Path | None = None,
+) -> Path:
     target = Path(path)
     ensure_dir(target.parent)
-    with open(target, "w", encoding=encoding, newline=newline) as f:
-        f.write(text)
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding=encoding,
+            newline=newline,
+            dir=target.parent,
+            prefix=f".{target.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as file:
+            temporary = Path(file.name)
+            file.write(text)
+            file.flush()
+            os.fsync(file.fileno())
+
+        if backup_path is not None and target.is_file():
+            backup = Path(backup_path)
+            ensure_dir(backup.parent)
+            _atomic_copy_file(target, backup)
+
+        os.replace(temporary, target)
+        temporary = None
+        _fsync_directory(target.parent)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
     return target
 
 
@@ -99,12 +137,54 @@ def backup_file(
                 old_file.unlink()
     backup_path = target_dir / backup_name if backup_name else numbered_backup_path(source_path, target_dir)
     shutil.copy2(source_path, backup_path)
+    _fsync_file(backup_path)
     return backup_path
+
+
+def _fsync_file(path: Path) -> None:
+    with path.open("r+b") as file:
+        os.fsync(file.fileno())
+
+
+def _atomic_copy_file(source: Path, destination: Path) -> None:
+    temporary: Path | None = None
+    try:
+        with source.open("rb") as source_file:
+            with tempfile.NamedTemporaryFile(
+                mode="wb",
+                dir=destination.parent,
+                prefix=f".{destination.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as backup_file:
+                temporary = Path(backup_file.name)
+                shutil.copyfileobj(source_file, backup_file)
+                backup_file.flush()
+                os.fsync(backup_file.fileno())
+        shutil.copystat(source, temporary)
+        os.replace(temporary, destination)
+        temporary = None
+        _fsync_directory(destination.parent)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def _fsync_directory(path: Path) -> None:
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError:
+        return
+    try:
+        os.fsync(descriptor)
+    except OSError:
+        pass
+    finally:
+        os.close(descriptor)
 
 
 def _safe_backup_label(label: str) -> str:
     text = re.sub(r"[^0-9A-Za-z\u4e00-\u9fff_-]+", "_", str(label).strip())
     text = re.sub(r"_+", "_", text).strip("_")
     return text or "backup"
-
-

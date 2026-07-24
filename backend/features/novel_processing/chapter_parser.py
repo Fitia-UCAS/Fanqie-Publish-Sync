@@ -53,7 +53,7 @@ class ChapterBlock:
 
 def parse_chapter_blocks(text: str) -> list[ChapterBlock]:
     normalized = normalize_chapter_line_breaks(text or "")
-    matches = _filter_progressive_matches(list(CHAPTER_PATTERN.finditer(normalized)))
+    matches = _filter_chapter_matches(list(CHAPTER_PATTERN.finditer(normalized)))
     chapters: list[ChapterBlock] = []
     for index, (match, number) in enumerate(matches):
         start = match.start()
@@ -78,9 +78,8 @@ def parse_chapter_blocks(text: str) -> list[ChapterBlock]:
     return chapters
 
 
-def _filter_progressive_matches(matches: list) -> list[tuple]:
+def _filter_chapter_matches(matches: list) -> list[tuple]:
     accepted: list[tuple] = []
-    last_number: int | None = None
     for match in matches:
         number = chinese_to_int(match.group("num"))
         if number is None:
@@ -88,10 +87,7 @@ def _filter_progressive_matches(matches: list) -> list[tuple]:
         subtitle = strip_chapter_prefix(match.group(0))
         if _looks_like_body_reference(subtitle):
             continue
-        if last_number is not None and number <= last_number:
-            continue
         accepted.append((match, number))
-        last_number = number
     return accepted
 
 
@@ -112,6 +108,8 @@ def parse_chapters_file(path: str | Path) -> list[ChapterBlock]:
         chapter.source_path = file_path
     if not chapters:
         raise RuntimeError("没有解析到章节标题。请确认格式类似：第1章 标题")
+    ensure_unique_chapter_numbers(chapters, str(file_path))
+    ensure_increasing_chapter_numbers(chapters, str(file_path))
     return chapters
 
 
@@ -162,6 +160,15 @@ def ensure_unique_chapter_numbers(chapters: Iterable[ChapterBlock], source_name:
     duplicates = duplicate_chapter_numbers(chapters)
     if duplicates:
         raise ValueError(f"{source_name}中存在重复章节：{format_chapter_numbers(duplicates)}。为避免误覆盖，已停止。")
+
+
+def ensure_increasing_chapter_numbers(chapters: Iterable[ChapterBlock], source_name: str = "文本") -> None:
+    numbers = [chapter.number for chapter in chapters]
+    for previous, current in zip(numbers, numbers[1:]):
+        if current < previous:
+            raise ValueError(
+                f"{source_name}中章节顺序异常：第{previous}章之后出现第{current}章。为避免误发布，已停止。"
+            )
 
 
 def chapters_by_number(chapters: Iterable[TChapter], source_name: str = "文本") -> dict[int, TChapter]:
@@ -261,6 +268,8 @@ def _parse_single_chapter_file(path: Path) -> list[ChapterBlock]:
         return []
     blocks = parse_chapter_blocks(text)
     if blocks:
+        ensure_unique_chapter_numbers(blocks, str(path))
+        ensure_increasing_chapter_numbers(blocks, str(path))
         for block in blocks:
             block.source_path = path
         return blocks

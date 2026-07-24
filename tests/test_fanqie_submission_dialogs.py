@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pytest
+from playwright.sync_api import Error as PlaywrightError
 
 from backend.platforms.fanqie.dialogs import editing
 from backend.platforms.fanqie import submission
@@ -117,3 +118,26 @@ def test_next_step_handles_typo_then_non_chapter_prompt(monkeypatch, mode) -> No
     flow.enter_settings()
 
     assert state["value"] == "settings"
+
+
+def test_blocking_dialog_read_failure_is_diagnostic_and_does_not_report_success(monkeypatch) -> None:
+    class BrokenBody:
+        def inner_text(self, timeout: int) -> str:
+            raise PlaywrightError("body detached")
+
+    class BrokenPage:
+        url = "https://fanqienovel.com/publish/123"
+
+        def locator(self, selector: str) -> BrokenBody:
+            assert selector == "body"
+            return BrokenBody()
+
+    monkeypatch.setattr(submission, "save_failure_debug", lambda *args, **kwargs: None)
+    logs: list[str] = []
+    flow = SubmissionFlow(BrokenPage(), SubmissionMode.PUBLISH, log=logs.append)
+
+    assert flow._has_blocking_dialog() is True
+    assert "阶段=确认提交结果" in logs[0]
+    assert "URL=https://fanqienovel.com/publish/123" in logs[0]
+    assert "定位器=body" in logs[0]
+    assert "body detached" in logs[0]

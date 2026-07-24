@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 import json
-import shutil
 from typing import Any
 
 from backend.bootstrap import ApplicationServices, create_application_services
@@ -15,15 +14,19 @@ from backend.infrastructure.desktop.dialogs import (
     open_path,
     open_source_dialog,
 )
+from backend.infrastructure.files.storage import atomic_write_text
 from backend.infrastructure.persistence.config import deep_update, load_config, save_config, set_config_path
 from backend.interface.desktop.events import FrontendBridge
 from backend.interface.desktop.tasks import DesktopTaskCoordinator, log_category_for_page
 from backend.runtime.data_reset import reset_app_data, reset_login_state
+from backend.runtime.jobs.registry import TaskRegistry
 from backend.runtime.logging import setup_logging
 from backend.runtime.paths import FANQIE_AUTH_STATE_FILE, LOG_FILE, get_state_paths, latest_log_file
 from backend.runtime.defaults import DEFAULT_CHAPTER_MANAGE_URL
 from backend.platforms.fanqie.actions.interactions import ensure_logged_in, goto_chapter_manage
 from backend.platforms.fanqie.browser.session import BrowserSession, resolve_auth_state_file
+
+FANQIE_TASK_RESOURCE = "fanqie_browser"
 
 
 def _config_value(config: dict[str, Any], dotted_path: str) -> str:
@@ -41,7 +44,8 @@ class WebviewApi:
         self._config = load_config()
         self._services = services or create_application_services()
         self._bridge = FrontendBridge()
-        self._tasks = DesktopTaskCoordinator(self._bridge)
+        self._task_registry = TaskRegistry()
+        self._tasks = DesktopTaskCoordinator(self._bridge, registry=self._task_registry)
 
     def bind_window(self, window: Any) -> None:
         self._window = window
@@ -99,6 +103,10 @@ class WebviewApi:
         return FANQIE_AUTH_STATE_FILE.exists()
 
     def do_login(self) -> dict[str, Any]:
+        task_name = "fanqie_login"
+        conflict = self._start_fanqie_task(task_name)
+        if conflict:
+            return conflict
         session: BrowserSession | None = None
         succeeded = False
         try:
@@ -129,6 +137,7 @@ class WebviewApi:
         finally:
             if session is not None:
                 session.close(save_state=succeeded)
+            self._task_registry.finish_task(task_name)
 
     def import_login_state(self) -> dict[str, Any]:
         selected = open_login_state_dialog(self._window, current_path=str(FANQIE_AUTH_STATE_FILE))
@@ -137,22 +146,38 @@ class WebviewApi:
         source = resolve_auth_state_file(selected)
         if not source.is_file():
             return {"ok": False, "message": "所选位置没有找到 state.json。"}
+        task_name = "fanqie_auth_import"
+        conflict = self._start_fanqie_task(task_name)
+        if conflict:
+            return conflict
         try:
             data = json.loads(source.read_text(encoding="utf-8"))
             if not isinstance(data, dict):
                 raise ValueError("登录状态格式无效")
-            FANQIE_AUTH_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
             if source.resolve() != FANQIE_AUTH_STATE_FILE.resolve():
-                shutil.copy2(source, FANQIE_AUTH_STATE_FILE)
+                atomic_write_text(
+                    FANQIE_AUTH_STATE_FILE,
+                    json.dumps(data, ensure_ascii=False, indent=2),
+                    backup_path=FANQIE_AUTH_STATE_FILE.with_name(f"{FANQIE_AUTH_STATE_FILE.name}.bak"),
+                )
             return {"ok": True, "message": "登录状态已导入。"}
         except Exception as exc:
             return {"ok": False, "message": f"导入失败：{exc}"}
+        finally:
+            self._task_registry.finish_task(task_name)
 
     def reset_login(self) -> dict[str, Any]:
-        result = reset_login_state()
-        level = "warning" if result.get("ok") else "error"
-        self._bridge.emit_log("auto_publish", str(result.get("message") or "已重置授权。"), level)
-        return result
+        task_name = "fanqie_auth_reset"
+        conflict = self._start_fanqie_task(task_name)
+        if conflict:
+            return conflict
+        try:
+            result = reset_login_state()
+            level = "warning" if result.get("ok") else "error"
+            self._bridge.emit_log("auto_publish", str(result.get("message") or "已重置授权。"), level)
+            return result
+        finally:
+            self._task_registry.finish_task(task_name)
 
     def reset_app_data(self) -> dict[str, Any]:
         result = reset_app_data(preserve_auth_state=True)
@@ -169,7 +194,12 @@ class WebviewApi:
         if not FANQIE_AUTH_STATE_FILE.is_file():
             self._bridge.emit_log("auto_publish", "请先通过账号登录入口完成番茄登录。", "warning")
             return False
-        return self._tasks.start("auto_publish", "auto_publish", lambda callbacks: self._services.publishing.execute(payload, callbacks))
+        return self._tasks.start(
+            "auto_publish",
+            "auto_publish",
+            lambda callbacks: self._services.publishing.execute(payload, callbacks),
+            resource=FANQIE_TASK_RESOURCE,
+        )
 
     def chapter_sync_list_chapters(self, file_path: str) -> dict[str, Any]:
         return self._list_chapters(file_path)
@@ -178,7 +208,12 @@ class WebviewApi:
         if not FANQIE_AUTH_STATE_FILE.is_file():
             self._bridge.emit_log("chapter_sync", "请先通过账号登录入口完成番茄登录。", "warning")
             return False
-        return self._tasks.start("chapter_sync", "chapter_sync", lambda callbacks: self._services.syncing.execute(payload, callbacks))
+        return self._tasks.start(
+            "chapter_sync",
+            "chapter_sync",
+            lambda callbacks: self._services.syncing.execute(payload, callbacks),
+            resource=FANQIE_TASK_RESOURCE,
+        )
 
     def auto_publish_stop(self) -> bool:
         return self._tasks.stop("auto_publish", "auto_publish", "已请求终止发布，当前章节结束后会终止。")
@@ -213,6 +248,15 @@ class WebviewApi:
             return {"ok": True, "message": f"已识别 {len(chapters)} 个章节。", "chapters": preview}
         except Exception as exc:
             return {"ok": False, "message": str(exc), "chapters": []}
+
+    def _start_fanqie_task(self, task_name: str) -> dict[str, Any] | None:
+        if self._task_registry.start_task(task_name, resource=FANQIE_TASK_RESOURCE):
+            return None
+        blocking_task = self._task_registry.blocking_task(task_name, resource=FANQIE_TASK_RESOURCE)
+        return {
+            "ok": False,
+            "message": f"番茄平台任务 {blocking_task or '未知任务'} 正在运行，请先等待或终止当前任务。",
+        }
 
     def _remember_path(self, config_path: str, path: str) -> str:
         if path and config_path:

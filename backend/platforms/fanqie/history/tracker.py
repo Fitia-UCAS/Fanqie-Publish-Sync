@@ -4,6 +4,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from backend.infrastructure.files.storage import write_text
 from backend.runtime.paths import CHAPTER_SYNC_HISTORY_DIR
 from backend.features.novel_processing.text_normalizer import normalize_novel_body
 
@@ -32,7 +33,7 @@ def ensure_repo(repo: Path) -> bool:
         run_git(repo, ["config", "user.name", "novel_sync"])
         run_git(repo, ["config", "user.email", "novel_sync@local"])
         run_git(repo, ["config", "core.quotepath", "false"])
-        (repo / ".gitignore").write_text("", encoding="utf-8")
+        write_text(repo / ".gitignore", "")
     return True
 
 
@@ -55,9 +56,10 @@ def track_snapshot(chapter_no: int, local_title: str, local_body: str, remote_ti
     ts = time.strftime("%Y-%m-%d %H:%M:%S")
     chapter_dir = repo / "chapters" / f"chapter_{chapter_no:03d}"
     chapter_dir.mkdir(parents=True, exist_ok=True)
-    (chapter_dir / "local.txt").write_text(f"标题：{local_title}\n\n{normalize_novel_body(local_body)}\n", encoding="utf-8")
-    (chapter_dir / "remote.txt").write_text(f"标题：{remote_title}\n\n{normalize_novel_body(remote_body)}\n", encoding="utf-8")
-    (chapter_dir / "meta.txt").write_text(
+    write_text(chapter_dir / "local.txt", f"标题：{local_title}\n\n{normalize_novel_body(local_body)}\n")
+    write_text(chapter_dir / "remote.txt", f"标题：{remote_title}\n\n{normalize_novel_body(remote_body)}\n")
+    write_text(
+        chapter_dir / "meta.txt",
         "\n".join([
             f"chapter_no={chapter_no}",
             f"time={ts}",
@@ -65,7 +67,6 @@ def track_snapshot(chapter_no: int, local_title: str, local_body: str, remote_ti
             f"remote_title={remote_title}",
             "",
         ]),
-        encoding="utf-8",
     )
 
     run_git(repo, ["add", "chapters", ".gitignore"])

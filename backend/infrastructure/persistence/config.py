@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,6 +8,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from backend.infrastructure.files.storage import atomic_write_text
 from backend.infrastructure.persistence.config_models import AppConfigModel, TaskSettings
 from backend.runtime.paths import CONFIG_FILE, LEGACY_CONFIG_FILE
 
@@ -27,19 +27,34 @@ class ConfigRepository:
 
     def load(self) -> dict[str, Any]:
         data = self._read_json(self.path)
+        restored_from_backup = False
+        if not data:
+            backup_data = self._read_json(self.backup_path)
+            if backup_data:
+                data = backup_data
+                restored_from_backup = True
         if not data and self.legacy_path and self.legacy_path.exists():
             data = self._read_json(self.legacy_path)
         config = self.normalize(data)
-        if not self.path.exists():
-            self.save(config)
+        if not self.path.exists() or restored_from_backup:
+            self._write(config, create_backup=False)
         return config
 
     def save(self, config: dict[str, Any]) -> None:
         normalized = self.normalize(config)
+        self._write(normalized, create_backup=True)
+
+    @property
+    def backup_path(self) -> Path:
+        return self.path.with_name(f"{self.path.name}.bak")
+
+    def _write(self, normalized: dict[str, Any], *, create_backup: bool) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = self.path.with_name(f".{self.path.name}.tmp")
-        temporary.write_text(json.dumps(normalized, ensure_ascii=False, indent=2), encoding="utf-8")
-        os.replace(temporary, self.path)
+        atomic_write_text(
+            self.path,
+            json.dumps(normalized, ensure_ascii=False, indent=2),
+            backup_path=self.backup_path if create_backup else None,
+        )
 
     def normalize(self, data: dict[str, Any]) -> dict[str, Any]:
         migrated = self._migrate_legacy_sections(data if isinstance(data, dict) else {})

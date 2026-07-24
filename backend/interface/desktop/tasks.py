@@ -27,9 +27,17 @@ class DesktopTaskCoordinator:
         task_name: str,
         page: str,
         worker: Callable[[TaskCallbacks], TaskResult | dict[str, Any]],
+        *,
+        resource: str | None = None,
     ) -> bool:
-        if not self._registry.start_task(task_name):
-            self._bridge.emit_log(page, "任务正在运行，请稍候。", "warning")
+        if not self._registry.start_task(task_name, resource=resource):
+            blocking_task = self._registry.blocking_task(task_name, resource=resource)
+            message = (
+                f"任务 {blocking_task} 正在占用番茄平台，请先等待或终止当前任务。"
+                if blocking_task
+                else "任务正在运行，请稍候。"
+            )
+            self._bridge.emit_log(page, message, "warning")
             return False
         thread = threading.Thread(target=self._run, args=(task_name, page, worker), daemon=True)
         thread.start()

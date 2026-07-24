@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable
 
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page
 
 from backend.platforms.fanqie.actions.interactions import locator_count_safe
-from backend.platforms.fanqie.browser.session import save_debug
+from backend.platforms.fanqie.browser.session import page_failure_context, save_debug, save_failure_debug
 from backend.platforms.fanqie.dialogs.editing import (
     click_continue_edit_if_present,
     click_non_chapter_submit_if_present,
@@ -47,6 +48,7 @@ class SubmissionFlow:
     scheduled_slot: ScheduledPublishSlot | None = None
     phase: SubmissionPhase = SubmissionPhase.READY
     daily_limit_reschedule_attempts: int = 0
+    _reported_failures: set[str] = field(default_factory=set, init=False)
 
     @property
     def debug_prefix(self) -> str:
@@ -102,7 +104,19 @@ class SubmissionFlow:
         for attempt in range(1, 4):
             if not self._click_next_step_once():
                 if attempt == 3:
-                    raise RuntimeError("未找到“下一步”按钮。")
+                    self._report_failure_once(
+                        "next_step_not_found",
+                        stage="进入提交设置",
+                        locator='role=button[name="下一步"] / DOM fallback',
+                    )
+                    raise RuntimeError(
+                        "未找到“下一步”按钮。"
+                        + page_failure_context(
+                            self.page,
+                            "进入提交设置",
+                            locator='role=button[name="下一步"] / DOM fallback',
+                        )
+                    )
                 self.page.wait_for_timeout(1000)
                 continue
 
@@ -120,6 +134,7 @@ class SubmissionFlow:
         raise RuntimeError(f"点击“下一步”后仍未检测到{self.settings_label}弹窗，可能被页面校验/保存状态拦截。")
 
     def _click_next_step_once(self) -> bool:
+        last_error: PlaywrightError | None = None
         try:
             buttons = self.page.get_by_role("button", name="下一步", exact=True)
             for index in reversed(range(locator_count_safe(buttons))):
@@ -127,11 +142,20 @@ class SubmissionFlow:
                 try:
                     button.click(timeout=10000)
                     return True
-                except Exception:
+                except PlaywrightError as exc:
+                    last_error = exc
                     continue
-        except Exception:
-            pass
-        return self._click_next_step_with_dom_fallback()
+        except PlaywrightError as exc:
+            last_error = exc
+        clicked = self._click_next_step_with_dom_fallback()
+        if not clicked and last_error is not None:
+            self._report_failure_once(
+                "next_step_role_failed",
+                stage="点击下一步",
+                locator='role=button[name="下一步"]',
+                error=last_error,
+            )
+        return clicked
 
     def _click_next_step_with_dom_fallback(self) -> bool:
         script = r"""
@@ -168,7 +192,13 @@ class SubmissionFlow:
         """
         try:
             return bool(self.page.evaluate(script))
-        except Exception:
+        except PlaywrightError as exc:
+            self._report_failure_once(
+                "next_step_dom_failed",
+                stage="点击下一步 DOM 回退",
+                locator='button, [role="button"], a',
+                error=exc,
+            )
             return False
 
     def _wait_for_settings_or_handle_dialog(self) -> bool:
@@ -229,8 +259,14 @@ class SubmissionFlow:
     def _has_blocking_dialog(self) -> bool:
         try:
             body = self.page.locator("body").inner_text(timeout=800)
-        except Exception:
-            body = ""
+        except PlaywrightError as exc:
+            self._report_failure_once(
+                "blocking_dialog_read_failed",
+                stage="确认提交结果",
+                locator="body",
+                error=exc,
+            )
+            return True
         compact = "".join(body.split())
         return (
             ("发布设置" in compact)
@@ -242,6 +278,20 @@ class SubmissionFlow:
             or ("非章节内容" in compact and "作者有话说" in compact and "提交" in compact)
             or ("继续编辑" in compact and "刚刚更新" in compact)
         )
+
+    def _report_failure_once(
+        self,
+        key: str,
+        *,
+        stage: str,
+        locator: str = "",
+        error: BaseException | None = None,
+    ) -> None:
+        if key in self._reported_failures:
+            return
+        self._reported_failures.add(key)
+        save_failure_debug(self.page, f"{self.debug_prefix}_{key}")
+        self.log(f"页面操作失败：{page_failure_context(self.page, stage, locator=locator, error=error)}")
 
 
 __all__ = ["SubmissionFlow", "SubmissionMode", "SubmissionPhase"]
