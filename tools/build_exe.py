@@ -105,7 +105,7 @@ exe = EXE(
 
 
 def install_requirements() -> None:
-    requirements = ROOT_DIR / "requirements.txt"
+    requirements = ROOT_DIR / "requirements-build.txt"
     run([sys.executable, "-m", "pip", "install", "-r", str(requirements)])
 
 
