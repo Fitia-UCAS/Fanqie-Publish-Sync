@@ -58,3 +58,10 @@
 - `assets/styles.css` 只作为样式入口，按 shell、workspace、terminal、legacy-tools 和 controls 顺序加载源模块。
 - `core/task_panel.js` 负责通用任务状态与日志面板，`core/fanqie_task_actions.js` 负责番茄页面绑定和载荷收集。
 - `assets/bundle.js` 是提交到仓库的生成产物，测试必须验证它与 `tools/bundle_js.py` 声明的源文件完全一致。
+
+## 依赖分组
+
+- `requirements.txt` 与 `[project].dependencies` 只声明启动桌面程序所需的运行依赖。
+- `requirements-dev.txt` 与 `[project.optional-dependencies].dev` 声明测试和静态检查工具。
+- `requirements-build.txt` 与 `[project.optional-dependencies].build` 声明 Windows 打包工具，并包含运行依赖。
+- 构建脚本只安装构建依赖组；测试负责校验三组声明保持一致。

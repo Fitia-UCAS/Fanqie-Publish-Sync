@@ -62,9 +62,23 @@ That is pretty much it.
 It is not that I do not want to write a manual.
 It is just that once you run it, you will probably figure out most of it.
 
+Install the runtime dependencies, then start the desktop app:
+
 ```bash
+python -m pip install -r requirements.txt
 python main.py
 ```
+
+For development and tests:
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+python -m ruff check .
+```
+
+For a Windows executable, run `python tools/build_exe.py`. The build script installs
+`requirements-build.txt`; pass `--skip-install` when that group is already installed.
 
 ---
 
@@ -193,9 +207,23 @@ emmm......
 
 鹅且，现在有辣么多ai，问问就差不多知道嘞。
 
+安装运行依赖后启动：
+
 ```bash
+python -m pip install -r requirements.txt
 python main.py
 ```
+
+开发和测试：
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+python -m ruff check .
+```
+
+打包 Windows 程序时运行 `python tools/build_exe.py`。构建脚本会安装
+`requirements-build.txt`；如果已经安装过构建依赖，可以加 `--skip-install`。
 
 ---
 
