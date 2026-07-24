@@ -63,3 +63,35 @@ def test_production_modules_do_not_import_private_names_across_modules() -> None
                     violations.append(f"{path.relative_to(ROOT_DIR)} imports {node.module}.{imported.name}")
 
     assert violations == []
+
+
+def test_fanqie_page_and_dialog_modules_stay_bounded() -> None:
+    fanqie_dir = BACKEND_DIR / "platforms" / "fanqie"
+    candidates = [
+        *sorted((fanqie_dir / "dialogs").glob("*.py")),
+        *sorted((fanqie_dir / "pages").glob("*.py")),
+    ]
+    oversized = {
+        str(path.relative_to(ROOT_DIR)): len(path.read_text(encoding="utf-8").splitlines())
+        for path in candidates
+        if path.name != "__init__.py" and len(path.read_text(encoding="utf-8").splitlines()) > 450
+    }
+
+    assert oversized == {}
+
+
+def test_editor_and_publishing_facades_keep_public_entrypoints() -> None:
+    from backend.platforms.fanqie.dialogs import publishing
+    from backend.platforms.fanqie.pages import editor
+
+    assert set(publishing.__all__) >= {
+        "choose_ai_option",
+        "click_confirm_publish",
+        "ensure_scheduled_publish",
+    }
+    assert set(editor.__all__) >= {
+        "ChapterEditorNotFound",
+        "fill_locator",
+        "get_remote_chapter",
+        "open_chapter_editor",
+    }
