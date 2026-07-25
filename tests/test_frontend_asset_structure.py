@@ -204,6 +204,25 @@ def test_primary_task_buttons_share_icon_action_markup() -> None:
     assert "<span>↑</span><div><b>启动发布</b></div>" in publisher_js
 
 
+def test_sync_page_uses_one_explicit_chapter_field_and_keeps_pull_controls() -> None:
+    syncer_js = (FRONTEND_DIR / "assets" / "pages" / "fanqie_syncer.js").read_text(encoding="utf-8")
+    actions_js = (FRONTEND_DIR / "assets" / "core" / "fanqie_task_actions.js").read_text(encoding="utf-8")
+
+    assert 'id="syChapterSelection"' in syncer_js
+    assert "<label>指定章节</label>" in syncer_js
+    assert "syChapterOrder" not in syncer_js
+    assert "开始拉取" in syncer_js
+    assert "syPullPause" in syncer_js
+    assert "syPullResume" in syncer_js
+    assert "syPullStop" in syncer_js
+    assert "syPullPause" in actions_js
+    assert "syPullResume" in actions_js
+    assert "syPullStop" in actions_js
+    assert "payload.chapterSelection" in actions_js
+    assert "payload.chapterOrder" not in actions_js
+    assert syncer_js.index('id="syChapterSelection"') < syncer_js.index('id="syStart"')
+
+
 def test_action_buttons_use_exact_shared_control_height() -> None:
     css = _styles_text()
 

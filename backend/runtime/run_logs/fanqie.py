@@ -24,7 +24,17 @@ _TASK_LABELS = {
 
 
 class FanqieTaskLog:
-    def __init__(self, *, callbacks: TaskCallbacks, task_kind: str, operation: str, start: int, end: int, total: int) -> None:
+    def __init__(
+        self,
+        *,
+        callbacks: TaskCallbacks,
+        task_kind: str,
+        operation: str,
+        start: int,
+        end: int,
+        total: int,
+        chapters: list[int] | None = None,
+    ) -> None:
         self.callbacks = callbacks
         self.total = total
         self.task_kind = task_kind
@@ -40,21 +50,23 @@ class FanqieTaskLog:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         task_label = _TASK_LABELS.get(task_kind, task_kind)
         operation_label = _OPERATION_LABELS.get(operation, operation)
+        scope = self._chapter_scope(start=start, end=end, chapters=chapters)
         self.path.write_text(
             f"任务：{task_label}\n"
             f"操作：{operation_label}\n"
-            f"范围：第 {start} 章到第 {end} 章\n"
+            f"{scope}\n"
             f"开始：{datetime.now():%Y-%m-%d %H:%M:%S}\n\n",
             encoding="utf-8",
         )
 
-    def emit_start(self, operation: str, start: int, end: int) -> None:
+    def emit_start(self, operation: str, start: int, end: int, chapters: list[int] | None = None) -> None:
         label = _OPERATION_LABELS.get(operation, operation)
+        scope = self._chapter_scope(start=start, end=end, chapters=chapters)
         self.callbacks.emit_log(f"任务：{_TASK_LABELS.get(self.task_kind, self.task_kind)}")
         self.callbacks.emit_log(f"操作：{label}")
-        self.callbacks.emit_log(f"范围：第 {start} 章到第 {end} 章")
+        self.callbacks.emit_log(scope)
         self.callbacks.emit_log(f"开始：{datetime.now():%Y-%m-%d %H:%M:%S}")
-        self.callbacks.emit_log(f"准备执行：{label}｜第 {start} 章到第 {end} 章")
+        self.callbacks.emit_log(f"准备执行：{label}｜{scope}")
         self.callbacks.emit_progress(0, max(1, self.total))
 
     def log(self, message: str) -> None:
@@ -229,6 +241,13 @@ class FanqieTaskLog:
         if not match:
             return None
         return int(match.group(1)), int(match.group(2)), int(match.group(3))
+
+    @staticmethod
+    def _chapter_scope(*, start: int, end: int, chapters: list[int] | None = None) -> str:
+        if chapters:
+            chapter_text = "、".join(str(number) for number in chapters)
+            return f"章节：{chapter_text}"
+        return f"范围：第 {start} 章到第 {end} 章"
 
     @staticmethod
     def _make_log_path(*, task_kind: str, operation: str, start: int, end: int) -> Path:

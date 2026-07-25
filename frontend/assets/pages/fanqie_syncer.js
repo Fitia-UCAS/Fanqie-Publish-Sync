@@ -14,6 +14,10 @@ window.renderFanqieSyncerPage = function renderFanqieSyncerPage(app) {
                 <label>章节管理 URL</label>
                 <input class="input" id="syUrl" type="password" value="${app.attr(cfg.chapterManageUrl || '')}" data-masked-url="true" placeholder="https://fanqienovel.com/..." autocomplete="off" spellcheck="false" />
               </div>
+              <div class="field">
+                <label>指定章节</label>
+                <input class="input" id="syChapterSelection" type="text" value="${app.attr(cfg.chapterSelection || '')}" placeholder="如：28、29、48、51、53、70" autocomplete="off" />
+              </div>
               <div class="field-pair">
                 <div class="field"><label>起始章节</label><input class="input" id="syStart" type="number" min="1" value="${app.attr(cfg.start || 1)}" /></div>
                 <div class="field"><label>结束章节</label><input class="input" id="syEnd" type="number" min="1" value="${app.attr(cfg.end || 1)}" /></div>

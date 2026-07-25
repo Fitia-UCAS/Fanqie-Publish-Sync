@@ -176,7 +176,7 @@
       });
     },
     collectPublishPayload(prefix, operation) {
-      return {
+      const payload = {
         novelFile: document.getElementById(`${prefix}NovelFile`)?.value || '',
         chapterManageUrl: document.getElementById(`${prefix}Url`)?.dataset.actualValue || document.getElementById(`${prefix}Url`)?.value || '',
         authStatePath: '',
@@ -195,6 +195,10 @@
         scheduleAfternoonCount: Number(document.getElementById(`${prefix}ScheduleAfternoonCount`)?.value || 0),
         operation,
       };
+      if (prefix === 'sy') {
+        payload.chapterSelection = document.getElementById('syChapterSelection')?.value || '';
+      }
+      return payload;
     },
   };
 })();

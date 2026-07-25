@@ -19,3 +19,32 @@ def test_sync_payload_exposes_validated_direction() -> None:
 def test_sync_payload_rejects_unknown_operation() -> None:
     with pytest.raises(ValidationError):
         SyncTaskPayload.model_validate({"novelFile": "novel.txt", "operation": "delete"})
+
+
+def test_sync_payload_parses_explicit_chapters_in_ascending_order() -> None:
+    payload = SyncTaskPayload.model_validate(
+        {
+            "novelFile": "novel.txt",
+            "chapterSelection": "第28章、29，48 51;53；70、28",
+        }
+    )
+
+    assert payload.chapter_selection == "28,29,48,51,53,70,28"
+    assert payload.chapters == [28, 29, 48, 51, 53, 70]
+    assert payload.has_explicit_chapters is True
+
+
+def test_sync_payload_uses_range_when_explicit_chapters_are_empty() -> None:
+    payload = SyncTaskPayload.model_validate(
+        {"novelFile": "novel.txt", "start": 9, "end": 7, "chapterSelection": ""}
+    )
+
+    assert payload.chapters == [7, 8, 9]
+    assert payload.has_explicit_chapters is False
+
+
+def test_sync_payload_rejects_invalid_explicit_chapters() -> None:
+    with pytest.raises(ValidationError, match="指定章节格式不正确"):
+        SyncTaskPayload.model_validate(
+            {"novelFile": "novel.txt", "chapterSelection": "28、第二十九章、48"}
+        )

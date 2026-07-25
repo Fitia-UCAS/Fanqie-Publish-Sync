@@ -60,3 +60,28 @@ def test_task_log_localizes_header_and_hides_tracking_noise_from_console(tmp_pat
     assert "范围：第 31 章到第 77 章" in header_and_details
     assert "Diff：" in header_and_details
     assert [message for message, _level in received] == ["番茄同步 Git 追踪已开启。"]
+
+
+def test_task_log_describes_explicit_chapters_in_processing_order(tmp_path, monkeypatch) -> None:
+    received: list[tuple[str, str]] = []
+    log_path = tmp_path / "task.log"
+    monkeypatch.setattr(
+        FanqieTaskLog,
+        "_make_log_path",
+        staticmethod(lambda **kwargs: log_path),
+    )
+    chapters = [70, 53, 51, 48, 29, 28]
+    task_log = FanqieTaskLog(
+        callbacks=TaskCallbacks(log=lambda message, level: received.append((message, level))),
+        task_kind="chapter_sync",
+        operation="publish",
+        start=28,
+        end=70,
+        total=len(chapters),
+        chapters=chapters,
+    )
+
+    task_log.emit_start("publish", 28, 70, chapters=chapters)
+
+    assert "章节：70、53、51、48、29、28" in log_path.read_text(encoding="utf-8")
+    assert ("章节：70、53、51、48、29、28", "info") in received

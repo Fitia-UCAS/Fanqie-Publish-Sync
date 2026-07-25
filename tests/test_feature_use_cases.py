@@ -62,3 +62,30 @@ def test_sync_use_case_maps_pull_to_remote_to_local(tmp_path: Path) -> None:
     assert result.ok is True
     assert received["direction"] == "remote_to_local"
     assert received["check_only"] is False
+
+
+def test_sync_use_case_passes_explicit_chapters_in_ascending_order(tmp_path: Path) -> None:
+    source = tmp_path / "novel.txt"
+    source.write_text(
+        "\n\n".join(f"第{number}章 标题{number}\n\n正文{number}" for number in (28, 29, 48, 51, 53, 70)),
+        encoding="utf-8",
+    )
+    received: dict[str, Any] = {}
+
+    def runner(**kwargs: Any) -> list[Result]:
+        received.update(kwargs)
+        return [Result(True, number) for number in kwargs["chapters"]]
+
+    result = SyncChapters(runner).execute(
+        {
+            "novelFile": str(source),
+            "chapterManageUrl": "https://fanqienovel.com/manage",
+            "start": 1,
+            "end": 77,
+            "chapterSelection": "28、29、48、51、53、70",
+            "operation": "publish",
+        }
+    )
+
+    assert result.ok is True
+    assert received["chapters"] == [28, 29, 48, 51, 53, 70]

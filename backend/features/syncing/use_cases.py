@@ -21,10 +21,10 @@ class SyncChapters:
         url = request.chapter_manage_url.strip()
         if not url.startswith("http"):
             return TaskResult(False, "请填写番茄章节管理 URL。")
-        start, end = request.chapter_range
         operation = request.operation
         task_kind = request.task_kind
-        chapters = list(range(start, end + 1))
+        chapters = request.chapters
+        start, end = min(chapters), max(chapters)
         task_log = FanqieTaskLog(
             callbacks=callbacks,
             task_kind=task_kind,
@@ -32,8 +32,9 @@ class SyncChapters:
             start=start,
             end=end,
             total=len(chapters),
+            chapters=chapters if request.has_explicit_chapters else None,
         )
-        task_log.emit_start(operation, start, end)
+        task_log.emit_start(operation, start, end, chapters=chapters if request.has_explicit_chapters else None)
         results = self._runner(
             novel_file=source,
             chapters=chapters,

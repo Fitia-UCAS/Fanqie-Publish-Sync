@@ -23,6 +23,7 @@ class TaskSettings(BaseModel):
     schedule_morning_count: int = Field(default=1, ge=0, alias="scheduleMorningCount")
     schedule_afternoon_time: str = Field(default="18:00", alias="scheduleAfternoonTime")
     schedule_afternoon_count: int = Field(default=0, ge=0, alias="scheduleAfternoonCount")
+    chapter_selection: str = Field(default="", alias="chapterSelection")
 
 
 class AppConfigModel(BaseModel):
