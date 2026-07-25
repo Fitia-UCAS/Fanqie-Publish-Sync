@@ -18,7 +18,7 @@ def track_publish_chapter(chapter_no: int, local: Chapter, *, enabled: bool, log
     directory = _write_publish_snapshot(chapter_no, local)
     commit_id = _commit_publish_snapshot(PUBLISH_TRACKER_DIR, chapter_no)
     log(f"Git：已记录发文章节 {commit_id}" if commit_id else "Git：未检测到 Git 或无需新增提交")
-    log(f"Git追踪目录：{directory}")
+    log("Git追踪目录：已保存发布快照。")
     return directory
 
 

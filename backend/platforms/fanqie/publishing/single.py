@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Callable
 
 from backend.platforms.fanqie.publishing.editor import create_remote_chapter_editor
 from backend.platforms.fanqie.publishing.submitter import publish_after_save
 from backend.platforms.fanqie.publishing.tracker import track_publish_chapter
-from backend.platforms.fanqie.publishing.local_source import Chapter
+from backend.platforms.fanqie.publishing.local_source import Chapter, load_local_chapter
 from backend.features.publishing.models import ChapterPublishResult
 from backend.features.publishing.options import ChapterPublishOptions
 from backend.platforms.fanqie.publishing.verifier import verify_single_list_count
@@ -25,23 +26,31 @@ def run_single_chapter_publish(
     page,
     chapter_no: int,
     local: Chapter,
+    novel_file: Path | None = None,
     options: ChapterPublishOptions,
     log: Callable[[str], None],
 ) -> ChapterPublishResult:
 
-    local_title = local.subtitle
-    log(f"本地：第 {chapter_no} 章《{local_title}》")
-    trace_dir = track_publish_chapter(chapter_no, local, enabled=options.git_tracking, log=log)
+    initial_local_title = local.subtitle
+    log(f"本地：第 {chapter_no} 章《{initial_local_title}》")
 
     created = create_remote_chapter_editor(
         page,
         chapter_manage_url=options.chapter_manage_url,
         chapter_no=chapter_no,
-        local_title=local_title,
+        local_title=initial_local_title,
         log=log,
         verify_sequence=False,
     )
     editor_page = created.page
+
+    if novel_file is not None:
+        latest_local = load_local_chapter(novel_file, chapter_no)
+        if latest_local.text != local.text:
+            log(f"检测到第 {chapter_no} 章在任务运行期间发生修改，已重新读取最新正文。")
+        local = latest_local
+    local_title = local.subtitle
+    trace_dir = track_publish_chapter(chapter_no, local, enabled=options.git_tracking, log=log)
 
     log("正在填写章节序号...")
     save_debug(editor_page, f"chapter_{chapter_no:03d}_before_fill_chapter_no")

@@ -5,6 +5,7 @@ import subprocess
 import pytest
 
 from backend.features.novel_processing.chapter_parser import parse_chapter_blocks
+from backend.platforms.fanqie.history import diff_report
 from backend.platforms.fanqie.history import tracker as sync_tracker
 from backend.platforms.fanqie.publishing import tracker as publish_tracker
 
@@ -46,3 +47,19 @@ def test_publish_tracker_creates_snapshot_and_git_commit(tmp_path: Path, monkeyp
     assert (snapshot / "local.txt").is_file()
     assert count == "1"
     assert any("Git：已记录发文章节" in message for message in logs)
+
+
+def test_diff_report_uses_relative_paths(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(diff_report, "CHAPTER_SYNC_COMPARE_DIR", tmp_path)
+
+    diff_path = diff_report.make_git_diff(
+        chapter_no=70,
+        local_title="本地",
+        local_body="本地正文",
+        remote_title="远端",
+        remote_body="远端正文",
+    )
+    diff_text = diff_path.read_text(encoding="utf-8")
+
+    assert str(tmp_path) not in diff_text
+    assert "chapter_070" in diff_text

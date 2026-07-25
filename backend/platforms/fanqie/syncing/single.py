@@ -24,9 +24,8 @@ def run_single_chapter_sync(
     created_chapter_numbers: set[int] | None = None,
 ) -> ChapterSyncResult:
     local = local_chapter or get_local_chapter(novel_file, chapter_no)
-    local_title = local.subtitle
-    local_body_norm = normalize_novel_body(local.content)
-    log(f"本地：第 {chapter_no} 章《{local_title}》")
+    initial_local_title = local.subtitle
+    log(f"本地：第 {chapter_no} 章《{initial_local_title}》")
 
     cached_editor_url = editor_url_cache.get(chapter_no) if editor_url_cache else None
     created_chapter = False
@@ -34,7 +33,14 @@ def run_single_chapter_sync(
     chapter_no_loc = None
 
     try:
-        open_chapter_editor(page, options.chapter_manage_url, chapter_no, local_title, log=log, cached_editor_url=cached_editor_url)
+        open_chapter_editor(
+            page,
+            options.chapter_manage_url,
+            chapter_no,
+            initial_local_title,
+            log=log,
+            cached_editor_url=cached_editor_url,
+        )
         save_debug(page, "before_read")
         remote_title, remote_body, title_loc, body_loc = get_remote_chapter(page)
         log(f"番茄：标题《{remote_title}》")
@@ -45,7 +51,7 @@ def run_single_chapter_sync(
             page,
             chapter_manage_url=options.chapter_manage_url,
             chapter_no=chapter_no,
-            local_title=local_title,
+            local_title=initial_local_title,
             created_chapter_numbers=created_chapter_numbers,
             log=log,
         )
@@ -60,6 +66,12 @@ def run_single_chapter_sync(
         save_debug(page, "after_create_before_fill")
         log(f"番茄：第 {chapter_no} 章不存在，已打开新建章节编辑页。")
 
+    latest_local = get_local_chapter(novel_file, chapter_no)
+    if latest_local.text != local.text:
+        log(f"检测到第 {chapter_no} 章在任务运行期间发生修改，已重新读取最新正文。")
+    local = latest_local
+    local_title = local.subtitle
+    local_body_norm = normalize_novel_body(local.content)
     title_same = same_text(local_title, remote_title) or same_text(local.full_title, remote_title)
     body_same = same_text(local_body_norm, remote_body)
     if title_same and body_same:

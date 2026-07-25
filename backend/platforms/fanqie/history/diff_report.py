@@ -48,6 +48,8 @@ def make_git_diff(
         old_path, new_path = remote_path, local_path
     git_exe = shutil.which("git")
     if git_exe:
+        old_name = old_path.relative_to(CHAPTER_SYNC_COMPARE_DIR)
+        new_name = new_path.relative_to(CHAPTER_SYNC_COMPARE_DIR)
         cmd = [
             git_exe,
             "-c",
@@ -55,8 +57,8 @@ def make_git_diff(
             "diff",
             "--no-index",
             "--",
-            str(old_path),
-            str(new_path),
+            str(old_name),
+            str(new_name),
         ]
         result = subprocess.run(
             cmd,
@@ -74,8 +76,8 @@ def make_git_diff(
     diff_lines = difflib.unified_diff(
         old_lines,
         new_lines,
-        fromfile=str(old_path),
-        tofile=str(new_path),
+        fromfile=str(old_path.relative_to(CHAPTER_SYNC_COMPARE_DIR)),
+        tofile=str(new_path.relative_to(CHAPTER_SYNC_COMPARE_DIR)),
         lineterm="",
     )
     diff_path.write_text("\n".join(diff_lines), encoding="utf-8")

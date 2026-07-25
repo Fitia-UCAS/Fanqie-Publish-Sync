@@ -4,7 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Callable
 
-from backend.platforms.fanqie.syncing.local_source import Chapter, parse_chapters
+from backend.platforms.fanqie.syncing.local_source import Chapter, get_local_chapter, parse_chapters
 from backend.runtime.errors import ErrorStage
 from backend.features.syncing.models import ChapterSyncOptions, ChapterSyncResult
 from backend.features.syncing.options import make_chapter_sync_options
@@ -15,7 +15,6 @@ from backend.platforms.fanqie.actions.interactions import dismiss_popups, goto_c
 from backend.platforms.fanqie.pages.chapter_list import build_chapter_editor_index
 from backend.platforms.fanqie.models import build_schedule_slots, describe_schedule_slots
 from backend.features.novel_processing.chapter_parser import chapters_by_number
-from backend.runtime.paths import CHAPTER_SYNC_DEBUG_DIR
 from backend.runtime.defaults import DEFAULT_CHAPTER_MANAGE_URL
 
 
@@ -62,7 +61,7 @@ def run_multi_chapter_sync(
         ),
     )
     if options.debug_screenshots:
-        log(f"番茄同步调试截图已开启：{CHAPTER_SYNC_DEBUG_DIR}")
+        log("番茄同步调试截图已开启。")
     else:
         log("番茄同步调试截图已关闭。")
     if options.git_tracking:
@@ -83,6 +82,7 @@ def run_multi_chapter_sync(
     state = MultiChapterSyncState(chapters=list(chapters), results=[], result_chapter_numbers=[])
     try:
         local_chapters = _local_chapters_by_number(novel_file, chapters)
+        log("正文实时读取已启用：每章操作前都会重新读取本地小说来源。")
         if options.direction == "local_to_remote":
             log("正文校准已启用：会进入编辑页读取标题/正文，与本地一致则继续确认发布；存在差异才覆盖。")
 
@@ -115,6 +115,7 @@ def run_multi_chapter_sync(
                 chapter_manage_url=chapter_manage_url,
                 local_chapters=local_chapters,
                 chapters=chapters,
+                novel_file=novel_file,
                 state=state,
                 log=log,
             )
@@ -193,6 +194,8 @@ def _process_chapters(
             break
         log(f"后台批量处理：第 {chapter_no} 章（{index}/{process_total}）")
         try:
+            local_chapter = get_local_chapter(novel_file, chapter_no)
+            local_chapters[chapter_no] = local_chapter
             state.append(
                 chapter_no,
                 run_single_chapter_sync(
@@ -201,7 +204,7 @@ def _process_chapters(
                     chapter_no=chapter_no,
                     options=per_chapter_options,
                     log=log,
-                    local_chapter=local_chapters[chapter_no],
+                    local_chapter=local_chapter,
                     editor_url_cache=editor_url_cache,
                     created_chapter_numbers=created_chapter_numbers,
                 ),
@@ -236,6 +239,7 @@ def _final_list_verify_if_needed(
     chapter_manage_url: str,
     local_chapters: dict[int, Chapter],
     chapters: list[int],
+    novel_file: Path,
     state: MultiChapterSyncState,
     log: Callable[[str], None],
 ) -> None:
@@ -249,6 +253,8 @@ def _final_list_verify_if_needed(
     if not chapter_numbers:
         log("最终列表校验：没有已提交成功的章节需要校验。")
         return
+    latest_local_chapters = _local_chapters_by_number(novel_file, chapter_numbers)
+    local_chapters.update(latest_local_chapters)
     log("正在进行最终章节列表校验，确认已发布列表字数是否全部更新...")
     failures = wait_for_chapter_list_word_counts(
         page,

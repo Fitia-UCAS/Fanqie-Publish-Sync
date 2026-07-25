@@ -48,7 +48,7 @@ def record_diff_snapshot(
         remote_body=remote_body,
         direction=direction,
     )
-    log(f"Diff：{diff_path}")
+    log("Diff：已保存差异报告。")
     _committed, git_repo, commit_id = track_snapshot(
         chapter_no=chapter_no,
         local_title=local_title,
@@ -57,7 +57,7 @@ def record_diff_snapshot(
         remote_body=remote_body,
     )
     log(f"Git：已记录差异提交 {commit_id}" if commit_id else "Git：未检测到 Git 或无需新增提交")
-    log(f"Git追踪目录：{trace_dir}")
+    log("Git追踪目录：已保存章节快照。")
     return diff_path, git_repo, trace_dir
 
 
@@ -73,13 +73,13 @@ def apply_remote_to_local(
     log: Callable[[str], None],
 ) -> ChapterSyncResult:
     log("正在把番茄版本完整覆盖写入本地 txt...")
-    backup_path = replace_local_chapter(
+    replace_local_chapter(
         novel_file=novel_file,
         no=chapter_no,
         title=remote_title,
         content=remote_body,
     )
-    msg = f"完成：已将番茄版本完整覆盖写入本地 txt，并已格式化当前章节；章节备份：{backup_path}"
+    msg = "完成：已将番茄版本完整覆盖写入本地 txt，并已格式化当前章节；已生成章节备份。"
     log(msg)
     return ChapterSyncResult(ok=True, changed=True, published=False, message=msg, diff_path=diff_path, git_repo=git_repo, trace_dir=trace_dir)
 

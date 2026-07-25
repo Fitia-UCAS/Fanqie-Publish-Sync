@@ -14,3 +14,7 @@ def parse_chapters(novel_file: Path) -> list[Chapter]:
 
 def load_local_chapters_by_number(novel_file: Path, chapters: list[int]) -> dict[int, Chapter]:
     return load_chapters_by_number(novel_file, chapters, "本地小说来源")
+
+
+def load_local_chapter(novel_file: Path, chapter_no: int) -> Chapter:
+    return load_local_chapters_by_number(novel_file, [chapter_no])[chapter_no]

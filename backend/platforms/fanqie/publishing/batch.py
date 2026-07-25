@@ -4,7 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Callable
 
-from backend.platforms.fanqie.publishing.local_source import load_local_chapters_by_number
+from backend.platforms.fanqie.publishing.local_source import load_local_chapter, load_local_chapters_by_number
 from backend.runtime.errors import ErrorStage
 from backend.features.publishing.models import ChapterPublishResult
 from backend.features.publishing.options import ChapterPublishOptions, make_chapter_publish_options
@@ -12,7 +12,6 @@ from backend.platforms.fanqie.publishing.single import run_single_chapter_publis
 from backend.platforms.fanqie.publishing.verifier import wait_for_chapter_list_word_counts
 from backend.platforms.fanqie.browser.session import BrowserSession, save_failure_debug
 from backend.platforms.fanqie.models import build_schedule_slots, describe_schedule_slots
-from backend.runtime.paths import PUBLISH_DEBUG_DIR
 from backend.runtime.defaults import DEFAULT_CHAPTER_MANAGE_URL
 
 
@@ -68,8 +67,9 @@ def run_multi_chapter_publish_with_options(
     pause_requested: Callable[[], bool] | None = None,
 ) -> list[ChapterPublishResult]:
     local_chapters = load_local_chapters_by_number(novel_file, chapters)
+    log("正文实时读取已启用：每章操作前都会重新读取本地小说来源。")
     if options.debug_screenshots:
-        log(f"番茄发布调试截图已开启：{PUBLISH_DEBUG_DIR}")
+        log("番茄发布调试截图已开启。")
     else:
         log("番茄发布调试截图已关闭。")
     if options.git_tracking:
@@ -104,11 +104,14 @@ def run_multi_chapter_publish_with_options(
                 break
             log(f"后台批量处理：第 {chapter_no} 章（{index}/{len(chapters)}）")
             try:
+                local_chapter = load_local_chapter(novel_file, chapter_no)
+                local_chapters[chapter_no] = local_chapter
                 results.append(
                     run_single_chapter_publish(
                         page=page,
                         chapter_no=chapter_no,
-                        local=local_chapters[chapter_no],
+                        local=local_chapter,
+                        novel_file=novel_file,
                         options=per_chapter_options,
                         log=log,
                     )
@@ -124,6 +127,7 @@ def run_multi_chapter_publish_with_options(
             _final_list_verify_if_needed(
                 page=page,
                 options=options,
+                novel_file=novel_file,
                 local_chapters=local_chapters,
                 results=results,
                 log=log,
@@ -155,6 +159,7 @@ def _final_list_verify_if_needed(
     *,
     page,
     options: ChapterPublishOptions,
+    novel_file: Path,
     local_chapters: dict[int, object],
     results: list[ChapterPublishResult],
     log: Callable[[str], None],
@@ -165,6 +170,8 @@ def _final_list_verify_if_needed(
     if not chapter_numbers:
         log("最终列表校验：没有已提交成功的章节需要校验。")
         return
+    latest_local_chapters = load_local_chapters_by_number(novel_file, chapter_numbers)
+    local_chapters.update(latest_local_chapters)
     log("正在进行最终章节列表校验，确认已发布列表字数是否全部更新...")
     failures = wait_for_chapter_list_word_counts(
         page,
