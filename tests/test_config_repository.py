@@ -54,3 +54,24 @@ def test_config_repository_recovers_corrupted_config_from_backup(tmp_path: Path)
 
     assert config["auto_publish"]["novelFile"] == "stable.txt"
     assert repository.load()["auto_publish"]["novelFile"] == "stable.txt"
+
+
+def test_config_repository_preserves_sync_specific_and_browser_settings(tmp_path: Path) -> None:
+    repository = ConfigRepository(tmp_path / "config.json")
+    repository.save(
+        {
+            "auto_publish": {"browserHeadless": False},
+            "chapter_sync": {
+                "browserHeadless": False,
+                "syncConcurrency": 4,
+                "clearAuthorNote": True,
+            },
+        }
+    )
+
+    config = repository.load()
+
+    assert config["auto_publish"]["browserHeadless"] is False
+    assert config["chapter_sync"]["browserHeadless"] is False
+    assert config["chapter_sync"]["syncConcurrency"] == 4
+    assert config["chapter_sync"]["clearAuthorNote"] is True

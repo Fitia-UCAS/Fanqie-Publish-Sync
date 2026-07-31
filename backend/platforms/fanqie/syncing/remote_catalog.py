@@ -4,7 +4,7 @@ from typing import Callable
 
 from backend.runtime.defaults import DEFAULT_CHAPTER_MANAGE_URL
 from backend.platforms.fanqie.browser.session import BrowserSession
-from backend.platforms.fanqie.pages.chapter_list import collect_editor_links_on_current_page_deep
+from backend.platforms.fanqie.pages.chapter_list import collect_editor_links_on_current_page
 from backend.platforms.fanqie.actions.interactions import dismiss_popups, ensure_logged_in, goto_chapter_manage
 from backend.platforms.fanqie.actions.navigation import click_next_page, click_page_number, get_visible_page_numbers
 
@@ -13,7 +13,7 @@ def collect_remote_chapter_numbers(
     chapter_manage_url: str = DEFAULT_CHAPTER_MANAGE_URL,
     log: Callable[[str], None] = print,
 ) -> list[int]:
-    session = BrowserSession.open()
+    session = BrowserSession.open(headless=True)
     page = session.page
     try:
         goto_chapter_manage(page, chapter_manage_url)
@@ -24,7 +24,7 @@ def collect_remote_chapter_numbers(
 
         def collect() -> int:
             before = len(found)
-            found.update(collect_editor_links_on_current_page_deep(page).keys())
+            found.update(collect_editor_links_on_current_page(page).keys())
             return len(found) - before
 
         collect()
@@ -37,10 +37,12 @@ def collect_remote_chapter_numbers(
                 visited_pages.add(page_no)
                 if click_page_number(page, page_no):
                     dismiss_popups(page)
-                    progressed = True or collect() > 0
+                    collect()
+                    progressed = True
             if click_next_page(page):
                 dismiss_popups(page)
-                progressed = True or collect() > 0
+                collect()
+                progressed = True
             if progressed:
                 stagnant_rounds = 0
             else:

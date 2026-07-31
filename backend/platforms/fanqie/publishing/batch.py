@@ -24,6 +24,8 @@ def run_multi_chapter_publish(
     verify_after_publish: bool = True,
     debug_screenshots: bool = True,
     failure_screenshots: bool = True,
+    browser_headless: bool = True,
+    clear_author_note: bool = False,
     git_tracking: bool = True,
     auth_state_path: str = "",
     manual_schedule_enabled: bool = False,
@@ -42,6 +44,8 @@ def run_multi_chapter_publish(
         verify_after_publish=verify_after_publish,
         debug_screenshots=debug_screenshots,
         failure_screenshots=failure_screenshots,
+        browser_headless=browser_headless,
+        clear_author_note=clear_author_note,
         git_tracking=git_tracking,
         auth_state_path=auth_state_path,
         schedule_slots=build_schedule_slots(
@@ -86,11 +90,16 @@ def run_multi_chapter_publish_with_options(
         debug_enabled=options.debug_screenshots,
         failure_debug_enabled=options.failure_screenshots,
         auth_state_path=options.auth_state_path,
+        headless=options.browser_headless,
     )
     context = session.context
     page = session.page
     results: list[ChapterPublishResult] = []
     try:
+        if options.browser_headless:
+            log("发布浏览器已静默运行，不会弹出网页窗口。")
+        else:
+            log("发布浏览器窗口已显示，可用于观察和排错。")
         if not chapters:
             log("没有需要处理的章节。")
         per_chapter_options = replace(options, verify_after_publish=False) if options.verify_after_publish else options

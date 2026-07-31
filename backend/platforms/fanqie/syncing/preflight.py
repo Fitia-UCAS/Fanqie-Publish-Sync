@@ -11,6 +11,8 @@ from backend.platforms.fanqie.text_utils import (
     is_platform_count_compatible,
     word_count_tolerance,
 )
+from backend.runtime.errors import TaskCancelled
+from backend.runtime.jobs.cancellation import CancellationGuard
 
 
 def verify_chapter_list_word_counts(
@@ -59,13 +61,9 @@ def wait_for_chapter_list_word_counts(
     log: Callable[[str], None] = print,
     max_wait_seconds: int = 120,
     interval_seconds: int = 20,
+    cancel: CancellationGuard | None = None,
 ) -> dict[int, str]:
-
-
-
-
-
-
+    cancel = cancel or CancellationGuard()
     max_wait_seconds = max(0, int(max_wait_seconds))
     interval_seconds = max(2, int(interval_seconds))
     deadline = time.monotonic() + max_wait_seconds
@@ -73,6 +71,7 @@ def wait_for_chapter_list_word_counts(
     last_failures: dict[int, str] = {}
 
     while True:
+        cancel.checkpoint()
         attempt += 1
         if attempt == 1:
             log("最终列表校验：同步确认后先刷新章节管理列表；若平台缓存未刷新，会自动等待重试。")
@@ -80,7 +79,10 @@ def wait_for_chapter_list_word_counts(
             log(f"最终列表校验：第 {attempt} 次重试前刷新章节管理列表...")
         try:
             page.goto(chapter_manage_url, wait_until="domcontentloaded", timeout=60000)
+            cancel.checkpoint()
             wait_briefly_for_page_ready(page)
+        except TaskCancelled:
+            raise
         except Exception:
 
             pass
@@ -92,6 +94,7 @@ def wait_for_chapter_list_word_counts(
             chapter_numbers=chapter_numbers,
             log=log,
         )
+        cancel.checkpoint()
         if not failures:
             if attempt > 1:
                 log(f"最终列表校验：等待刷新后通过，共尝试 {attempt} 次。")
@@ -108,6 +111,13 @@ def wait_for_chapter_list_word_counts(
         failed_numbers = ", ".join(str(no) for no in sorted(failures))
         log(f"最终列表校验暂未通过：第 {failed_numbers} 章列表字数可能还没刷新，等待 {wait_seconds} 秒后重试...")
         try:
-            page.wait_for_timeout(wait_seconds * 1000)
+            cancel.wait_page(page, wait_seconds * 1000)
+        except TaskCancelled:
+            raise
         except Exception:
-            time.sleep(wait_seconds)
+            slept = 0.0
+            while slept < wait_seconds:
+                cancel.checkpoint()
+                current = min(0.2, wait_seconds - slept)
+                time.sleep(current)
+                slept += current

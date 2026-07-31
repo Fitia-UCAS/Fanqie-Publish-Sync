@@ -108,12 +108,23 @@
     },
     async runChapterSync(operation) {
       const payload = this.collectPublishPayload('sy', operation);
+      if (!this.validateSyncConcurrency(payload.syncConcurrency)) return;
       this.state.config.chapter_sync = payload;
       await this.saveConfig();
       if (!await this.requireFanqieLogin()) return;
       this.beginTaskUi('chapter_sync', '准备启动番茄同步...');
       const ok = await this.api.chapter_sync_run(payload);
       if (!ok) this.toast('任务没有启动，请查看日志。', 'warning', 'chapter_sync');
+    },
+    validateSyncConcurrency(value) {
+      const concurrency = Number(value);
+      if (Number.isInteger(concurrency) && concurrency >= 1 && concurrency <= 4) return true;
+      const input = document.getElementById('sySyncConcurrency');
+      this.toast('并发线程只能填写 1–4；如果要同步第 30 章，请把 30 填到“指定章节”。', 'warning', 'chapter_sync');
+      this.setHeaderStatus('请检查并发线程', 'error');
+      input?.focus();
+      input?.select();
+      return false;
     },
     bindManualScheduleToggle(prefix) {
       const checkbox = document.getElementById(`${prefix}ManualSchedule`);
@@ -186,6 +197,8 @@
         verifyAfterPublish: !!document.getElementById(`${prefix}VerifyAfterPublish`)?.checked,
         debugScreenshots: !!document.getElementById(`${prefix}DebugScreenshots`)?.checked,
         failureScreenshots: !!document.getElementById(`${prefix}FailureScreenshots`)?.checked,
+        browserHeadless: !!document.getElementById(`${prefix}BrowserHeadless`)?.checked,
+        clearAuthorNote: !!document.getElementById(`${prefix}ClearAuthorNote`)?.checked,
         gitTracking: !!document.getElementById(`${prefix}GitTracking`)?.checked,
         manualSchedule: !!document.getElementById(`${prefix}ManualSchedule`)?.checked,
         scheduleStartDate: document.getElementById(`${prefix}ScheduleStartDate`)?.value || '',
@@ -197,6 +210,7 @@
       };
       if (prefix === 'sy') {
         payload.chapterSelection = document.getElementById('syChapterSelection')?.value || '';
+        payload.syncConcurrency = Number(document.getElementById('sySyncConcurrency')?.value || 2);
       }
       return payload;
     },

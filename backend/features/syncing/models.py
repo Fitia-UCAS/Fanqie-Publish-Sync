@@ -28,8 +28,11 @@ class ChapterSyncOptions:
     verify_after_publish: bool = True
     debug_screenshots: bool = True
     failure_screenshots: bool = True
+    browser_headless: bool = True
     git_tracking: bool = True
     auth_state_path: str = ""
+    concurrency: int = 2
+    clear_author_note: bool = False
     schedule_slots: dict[int, ScheduledPublishSlot] = field(default_factory=dict)
 
     @property

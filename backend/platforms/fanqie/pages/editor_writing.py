@@ -6,8 +6,18 @@ from playwright.sync_api import Locator, Page
 from backend.features.novel_processing.text_normalizer import normalize_text
 from backend.platforms.fanqie.browser.session import save_debug
 from backend.platforms.fanqie.pages.editor_fields import editor_body_counter_confirms
+from backend.runtime.errors import TaskCancelled
+from backend.runtime.jobs.cancellation import CancellationGuard
 
-def _wait_for_editable_ready(page: Page, loc: Locator, *, timeout_ms: int = 8000) -> None:
+def _wait_for_editable_ready(
+    page: Page,
+    loc: Locator,
+    *,
+    timeout_ms: int = 8000,
+    cancel: CancellationGuard | None = None,
+) -> None:
+    cancel = cancel or CancellationGuard()
+    cancel.checkpoint()
     try:
         loc.wait_for(state="visible", timeout=timeout_ms)
     except Exception:
@@ -44,7 +54,7 @@ def _wait_for_editable_ready(page: Page, loc: Locator, *, timeout_ms: int = 8000
         loc.evaluate("el => { el.scrollIntoView({block: 'center', inline: 'nearest'}); el.focus(); }")
     except Exception:
         pass
-    page.wait_for_timeout(300)
+    cancel.wait_page(page, 300)
 
 
 def _editable_text(loc: Locator) -> str:
@@ -66,7 +76,15 @@ def _text_was_written(loc: Locator, text: str) -> bool:
     return len(current) >= max(80, int(len(expected) * 0.65)) and expected[:40] in current and expected[-40:] in current
 
 
-def _fill_editable_by_paste(page: Page, loc: Locator, text: str) -> bool:
+def _fill_editable_by_paste(
+    page: Page,
+    loc: Locator,
+    text: str,
+    *,
+    cancel: CancellationGuard | None = None,
+) -> bool:
+    cancel = cancel or CancellationGuard()
+    cancel.checkpoint()
     save_debug(page, "body_fill_paste_before")
     try:
         loc.evaluate("el => el.scrollIntoView({block: 'center', inline: 'nearest'})")
@@ -78,22 +96,32 @@ def _fill_editable_by_paste(page: Page, loc: Locator, text: str) -> bool:
         page.keyboard.press("Backspace")
         page.evaluate("text => navigator.clipboard && navigator.clipboard.writeText(text)", text)
         page.keyboard.press("Control+V")
-        page.wait_for_timeout(450)
+        cancel.wait_page(page, 450)
 
         page.keyboard.press("End")
         page.keyboard.press("Space")
-        page.wait_for_timeout(120)
+        cancel.wait_page(page, 120)
         page.keyboard.press("Backspace")
-        page.wait_for_timeout(350)
+        cancel.wait_page(page, 350)
         ok = _text_was_written(loc, text) or editor_body_counter_confirms(page, text)
         save_debug(page, "body_fill_paste_success" if ok else "body_fill_paste_failed")
         return ok
+    except TaskCancelled:
+        raise
     except Exception:
         save_debug(page, "body_fill_paste_exception")
         return False
 
 
-def _fill_editable_by_dom(page: Page, loc: Locator, text: str) -> bool:
+def _fill_editable_by_dom(
+    page: Page,
+    loc: Locator,
+    text: str,
+    *,
+    cancel: CancellationGuard | None = None,
+) -> bool:
+    cancel = cancel or CancellationGuard()
+    cancel.checkpoint()
     save_debug(page, "body_fill_dom_before")
     try:
         loc.evaluate(
@@ -130,25 +158,37 @@ def _fill_editable_by_dom(page: Page, loc: Locator, text: str) -> bool:
             }""",
             text,
         )
-        page.wait_for_timeout(350)
+        cancel.wait_page(page, 350)
         try:
             loc.click(timeout=3000, force=True)
             page.keyboard.press("End")
             page.keyboard.press("Space")
-            page.wait_for_timeout(120)
+            cancel.wait_page(page, 120)
             page.keyboard.press("Backspace")
+        except TaskCancelled:
+            raise
         except Exception:
             pass
-        page.wait_for_timeout(350)
+        cancel.wait_page(page, 350)
         ok = _text_was_written(loc, text) or editor_body_counter_confirms(page, text)
         save_debug(page, "body_fill_dom_success" if ok else "body_fill_dom_failed")
         return ok
+    except TaskCancelled:
+        raise
     except Exception:
         save_debug(page, "body_fill_dom_exception")
         return False
 
 
-def _fill_editable_by_keyboard(page: Page, loc: Locator, text: str) -> bool:
+def _fill_editable_by_keyboard(
+    page: Page,
+    loc: Locator,
+    text: str,
+    *,
+    cancel: CancellationGuard | None = None,
+) -> bool:
+    cancel = cancel or CancellationGuard()
+    cancel.checkpoint()
     save_debug(page, "body_fill_keyboard_before")
     try:
         loc.evaluate("el => el.scrollIntoView({block: 'center', inline: 'nearest'})")
@@ -159,16 +199,26 @@ def _fill_editable_by_keyboard(page: Page, loc: Locator, text: str) -> bool:
         page.keyboard.press("Control+A")
         page.keyboard.press("Backspace")
         page.keyboard.insert_text(text)
-        page.wait_for_timeout(350)
+        cancel.wait_page(page, 350)
         ok = _text_was_written(loc, text) or editor_body_counter_confirms(page, text)
         save_debug(page, "body_fill_keyboard_success" if ok else "body_fill_keyboard_failed")
         return ok
+    except TaskCancelled:
+        raise
     except Exception:
         save_debug(page, "body_fill_keyboard_exception")
         return False
 
 
-def fill_locator(page: Page, loc: Locator, text: str) -> None:
+def fill_locator(
+    page: Page,
+    loc: Locator,
+    text: str,
+    *,
+    cancel: CancellationGuard | None = None,
+) -> None:
+    cancel = cancel or CancellationGuard()
+    cancel.checkpoint()
     try:
         tag = str(loc.evaluate("el => (el.tagName || '').toLowerCase()"))
     except Exception:
@@ -191,9 +241,12 @@ def fill_locator(page: Page, loc: Locator, text: str) -> None:
         except Exception:
             pass
         try:
-            loc.fill(text, timeout=30000)
+            loc.fill(text, timeout=5000)
             save_debug(page, "input_fill_success")
+            cancel.checkpoint()
             return
+        except TaskCancelled:
+            raise
         except Exception:
             pass
         try:
@@ -213,15 +266,16 @@ def fill_locator(page: Page, loc: Locator, text: str) -> None:
 
     if is_editable:
         for attempt in range(2):
-            _wait_for_editable_ready(page, loc)
-            if _fill_editable_by_paste(page, loc, text):
+            cancel.checkpoint()
+            _wait_for_editable_ready(page, loc, cancel=cancel)
+            if _fill_editable_by_paste(page, loc, text, cancel=cancel):
                 return
-            if _fill_editable_by_dom(page, loc, text):
+            if _fill_editable_by_dom(page, loc, text, cancel=cancel):
                 return
-            if _fill_editable_by_keyboard(page, loc, text):
+            if _fill_editable_by_keyboard(page, loc, text, cancel=cancel):
                 return
             if attempt == 0:
-                page.wait_for_timeout(900)
+                cancel.wait_page(page, 900)
                 try:
                     loc.evaluate("el => { el.blur(); el.focus(); }")
                 except Exception:
@@ -256,5 +310,3 @@ def fill_locator(page: Page, loc: Locator, text: str) -> None:
         }""",
         text,
     )
-
-

@@ -18,6 +18,7 @@ from backend.platforms.fanqie.pages.editor import (
     fill_locator,
     reported_body_word_count,
 )
+from backend.platforms.fanqie.pages.author_note import clear_author_note_and_save
 from backend.features.novel_processing.text_normalizer import normalize_novel_body
 
 
@@ -66,6 +67,9 @@ def run_single_chapter_publish(
     fill_locator(editor_page, created.body_loc, local.content)
     save_debug(editor_page, f"chapter_{chapter_no:03d}_after_fill_body")
     _ensure_body_written(editor_page, created.body_loc, local, log=log)
+
+    if options.clear_author_note:
+        clear_author_note_and_save(editor_page, log=log)
 
     log("正在保存草稿，等待番茄显示已保存...")
     click_save_draft(editor_page, log=log)

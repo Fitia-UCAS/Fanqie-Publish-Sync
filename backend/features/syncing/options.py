@@ -15,6 +15,9 @@ def make_chapter_sync_options(
     failure_screenshots: bool,
     git_tracking: bool,
     auth_state_path: str = "",
+    browser_headless: bool = True,
+    concurrency: int = 2,
+    clear_author_note: bool = False,
     schedule_slots: dict[int, ScheduledPublishSlot] | None = None,
 ) -> ChapterSyncOptions:
     return ChapterSyncOptions(
@@ -25,7 +28,10 @@ def make_chapter_sync_options(
         verify_after_publish=verify_after_publish,
         debug_screenshots=debug_screenshots,
         failure_screenshots=failure_screenshots,
+        browser_headless=browser_headless,
         git_tracking=git_tracking,
         auth_state_path=auth_state_path,
+        concurrency=max(1, min(4, int(concurrency))),
+        clear_author_note=bool(clear_author_note),
         schedule_slots=dict(schedule_slots or {}),
     )

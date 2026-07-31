@@ -17,6 +17,7 @@ class ChapterTaskPayload(BaseModel):
     verify_after_publish: bool = Field(default=True, alias="verifyAfterPublish")
     debug_screenshots: bool = Field(default=True, alias="debugScreenshots")
     failure_screenshots: bool = Field(default=True, alias="failureScreenshots")
+    browser_headless: bool = Field(default=True, alias="browserHeadless")
     git_tracking: bool = Field(default=True, alias="gitTracking")
     auth_state_path: str = Field(default="", alias="authStatePath")
     manual_schedule: bool = Field(default=False, alias="manualSchedule")
@@ -33,12 +34,15 @@ class ChapterTaskPayload(BaseModel):
 
 class PublishTaskPayload(ChapterTaskPayload):
     operation: Literal["publish"] = "publish"
+    clear_author_note: bool = Field(default=False, alias="clearAuthorNote")
 
 
 class SyncTaskPayload(ChapterTaskPayload):
     operation: Literal["publish", "pull"] = "publish"
     task_kind: str = Field(default="chapter_sync", alias="taskKind")
     chapter_selection: str = Field(default="", alias="chapterSelection")
+    sync_concurrency: int = Field(default=2, alias="syncConcurrency", ge=1, le=4)
+    clear_author_note: bool = Field(default=False, alias="clearAuthorNote")
 
     @field_validator("chapter_selection")
     @classmethod

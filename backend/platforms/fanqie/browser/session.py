@@ -67,6 +67,7 @@ class BrowserSession:
         failure_debug_enabled: bool | None = None,
         auth_state_path: str | Path | None = None,
         settings: RuntimeSettings | None = None,
+        headless: bool = False,
     ) -> "BrowserSession":
         try:
             from playwright.sync_api import sync_playwright
@@ -75,14 +76,13 @@ class BrowserSession:
 
         playwright = sync_playwright().start()
         BROWSER_DATA_DIR.mkdir(parents=True, exist_ok=True)
-        launch_kwargs: dict[str, Any] = {
-            "headless": False,
-            "args": [
-                "--disable-blink-features=AutomationControlled",
-                "--start-maximized",
-            ],
-        }
-        context_kwargs: dict[str, Any] = {"no_viewport": True}
+        browser_args = ["--disable-blink-features=AutomationControlled"]
+        if not headless:
+            browser_args.append("--start-maximized")
+        launch_kwargs: dict[str, Any] = {"headless": bool(headless), "args": browser_args}
+        context_kwargs: dict[str, Any] = (
+            {"viewport": {"width": 1920, "height": 1080}} if headless else {"no_viewport": True}
+        )
         auth_state_file = resolve_auth_state_file(auth_state_path)
         if auth_state_file.exists():
             context_kwargs["storage_state"] = str(auth_state_file)
@@ -119,7 +119,8 @@ class BrowserSession:
             debug_capture=capture,
         )
         cls._sessions_by_context[id(context)] = session
-        maximize_page_window(page)
+        if not headless:
+            maximize_page_window(page)
         try:
             page.wait_for_timeout(300)
         except Exception:

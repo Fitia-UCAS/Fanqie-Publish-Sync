@@ -7,7 +7,7 @@ from playwright.sync_api import Page
 from backend.platforms.fanqie.pages.editor import pick_chapter_no_title_and_editor
 from backend.platforms.fanqie.browser.session import save_debug
 from backend.platforms.fanqie.actions.interactions import dismiss_popups, ensure_logged_in, goto_chapter_manage, wait_briefly_for_page_ready
-from backend.platforms.fanqie.dialogs.editing import click_continue_edit_if_present
+from backend.platforms.fanqie.dialogs.editing import click_discard_stale_edit_if_present
 from backend.platforms.fanqie.models import RemoteChapterEditor
 from backend.platforms.fanqie.editor_factory import (
     click_new_chapter,
@@ -49,7 +49,7 @@ def create_remote_chapter_editor(
     editor_page, opened_new_page = click_new_chapter(page, log=log)
     wait_briefly_for_page_ready(editor_page)
     save_debug(editor_page, f"chapter_{chapter_no:03d}_editor_opened")
-    click_continue_edit_if_present(editor_page, log=log, timeout_ms=1200)
+    click_discard_stale_edit_if_present(editor_page, log=log, timeout_ms=1200)
     save_debug(editor_page, f"chapter_{chapter_no:03d}_after_continue_edit_check")
     dismiss_editor_guides(editor_page, log=log)
     save_debug(editor_page, f"chapter_{chapter_no:03d}_after_editor_guides")

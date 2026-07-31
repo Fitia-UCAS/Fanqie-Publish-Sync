@@ -46,7 +46,12 @@ def click_largest_visible_page_number(page: Page) -> bool:
 def get_visible_page_numbers(page: Page) -> list[int]:
     script = r"""
     () => {
-        const all = Array.from(document.querySelectorAll('button,a,li,span,div'));
+        const paginationRoots = Array.from(document.querySelectorAll(
+            '.arco-pagination, [class*="pagination"], nav[aria-label*="分页"], [role="navigation"]'
+        ));
+        const scoped = paginationRoots.flatMap(root => Array.from(root.querySelectorAll('button,a,li,span,div')));
+        const all = scoped.length ? scoped : Array.from(document.querySelectorAll('button,a,li,span,div'));
+        const isScoped = scoped.length > 0;
         function visible(el) {
             const rect = el.getBoundingClientRect();
             const style = window.getComputedStyle(el);
@@ -64,7 +69,7 @@ def get_visible_page_numbers(page: Page) -> list[int]:
                 return {n, top: rect.top, width: rect.width, height: rect.height};
             })
             .filter(Boolean)
-            .filter(x => x.n >= 1 && x.n <= 999 && x.top > window.innerHeight * 0.45 && x.width <= 80 && x.height <= 80)
+            .filter(x => x.n >= 1 && x.n <= 999 && (isScoped || x.top > window.innerHeight * 0.45) && x.width <= 80 && x.height <= 80)
             .map(x => x.n);
         return Array.from(new Set(nums));
     }
@@ -78,7 +83,12 @@ def get_visible_page_numbers(page: Page) -> list[int]:
 def click_page_number(page: Page, page_no: int) -> bool:
     script = r"""
     (pageNo) => {
-        const all = Array.from(document.querySelectorAll('button,a,li,span,div'));
+        const paginationRoots = Array.from(document.querySelectorAll(
+            '.arco-pagination, [class*="pagination"], nav[aria-label*="分页"], [role="navigation"]'
+        ));
+        const scoped = paginationRoots.flatMap(root => Array.from(root.querySelectorAll('button,a,li,span,div')));
+        const all = scoped.length ? scoped : Array.from(document.querySelectorAll('button,a,li,span,div'));
+        const isScoped = scoped.length > 0;
         function visible(el) {
             const rect = el.getBoundingClientRect();
             const style = window.getComputedStyle(el);
@@ -95,7 +105,7 @@ def click_page_number(page: Page, page_no: int) -> bool:
                 return {el, top: rect.top, left: rect.left, width: rect.width, height: rect.height};
             })
             .filter(Boolean)
-            .filter(x => x.top > window.innerHeight * 0.45 && x.width <= 80 && x.height <= 80)
+            .filter(x => (isScoped || x.top > window.innerHeight * 0.45) && x.width <= 80 && x.height <= 80)
             .sort((a, b) => b.top - a.top || b.left - a.left);
         if (!candidates.length) return false;
         const target = candidates[0].el.closest('button,a,li') || candidates[0].el;
@@ -168,4 +178,3 @@ def click_next_page(page: Page) -> bool:
     except Exception:
         pass
     return False
-

@@ -12,7 +12,9 @@ from backend.platforms.fanqie.actions.interactions import (
     wait_briefly_for_page_ready,
 )
 from backend.platforms.fanqie.actions.navigation import click_next_page, click_page_number, get_visible_page_numbers
-from backend.platforms.fanqie.dialogs.editing import click_continue_edit_if_present
+from backend.platforms.fanqie.dialogs.editing import click_discard_stale_edit_if_present
+from backend.runtime.errors import TaskCancelled
+from backend.runtime.jobs.cancellation import CancellationGuard
 
 class ChapterEditorNotFound(RuntimeError):
     def __init__(self, chapter_no: int) -> None:
@@ -78,20 +80,28 @@ def open_chapter_editor(
     log=print,
     cached_editor_url: Optional[str] = None,
     manual_fallback: bool = False,
+    cancel: CancellationGuard | None = None,
 ) -> None:
+    cancel = cancel or CancellationGuard()
+    cancel.checkpoint()
     log(f"正在定位番茄后台第 {chapter_no} 章...")
     if cached_editor_url:
         try:
             log("使用已缓存的章节入口，直接进入编辑页...")
             page.goto(cached_editor_url, wait_until="domcontentloaded", timeout=60000)
+            cancel.checkpoint()
             wait_briefly_for_page_ready(page)
-            click_continue_edit_if_present(page, log=log, timeout_ms=1500)
+            click_discard_stale_edit_if_present(page, log=log, timeout_ms=1500)
+            cancel.checkpoint()
             return
+        except TaskCancelled:
+            raise
         except Exception:
             log("缓存入口打开失败，改用常规定位方式...")
     goto_chapter_manage(page, chapter_manage_url)
     ensure_logged_in(page, chapter_manage_url, log=log)
     dismiss_popups(page)
+    cancel.checkpoint()
 
 
     targets = [
@@ -103,11 +113,13 @@ def open_chapter_editor(
     ]
     def try_current_page() -> bool:
         for _ in range(2):
+            cancel.checkpoint()
             if click_edit_near_chapter_by_js(page, targets):
-                page.wait_for_timeout(1500)
-                click_continue_edit_if_present(page, log=log, timeout_ms=2000)
+                cancel.wait_page(page, 1500)
+                click_discard_stale_edit_if_present(page, log=log, timeout_ms=2000)
+                cancel.checkpoint()
                 return True
-            page.wait_for_timeout(700)
+            cancel.wait_page(page, 700)
         return False
 
     if try_current_page():
@@ -115,9 +127,11 @@ def open_chapter_editor(
 
     visited_pages: set[int] = set()
     for _ in range(40):
+        cancel.checkpoint()
         progressed = False
         page_numbers = sorted(get_visible_page_numbers(page))
         for page_no in page_numbers:
+            cancel.checkpoint()
             if page_no in visited_pages:
                 continue
             visited_pages.add(page_no)
@@ -135,12 +149,14 @@ def open_chapter_editor(
             break
 
     goto_chapter_manage(page, chapter_manage_url)
-    page.wait_for_timeout(1500)
+    cancel.wait_page(page, 1500)
     visited_pages.clear()
     for _ in range(40):
+        cancel.checkpoint()
         progressed = False
         page_numbers = sorted(get_visible_page_numbers(page))
         for page_no in page_numbers:
+            cancel.checkpoint()
             if page_no in visited_pages:
                 continue
             visited_pages.add(page_no)
@@ -157,8 +173,7 @@ def open_chapter_editor(
     if manual_fallback:
         log("自动定位章节失败，请手动点进目标章节编辑页。")
         input("看到标题框、正文编辑器、保存按钮后按 Enter：")
-        page.wait_for_timeout(1000)
-        click_continue_edit_if_present(page, log=log, timeout_ms=1500)
+        cancel.wait_page(page, 1000)
+        click_discard_stale_edit_if_present(page, log=log, timeout_ms=1500)
         return
     raise ChapterEditorNotFound(chapter_no)
-

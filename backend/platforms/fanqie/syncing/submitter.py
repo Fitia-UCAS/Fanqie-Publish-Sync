@@ -4,6 +4,7 @@ from playwright.sync_api import Page
 
 from backend.platforms.fanqie.models import ScheduledPublishSlot
 from backend.platforms.fanqie.submission import SubmissionFlow, SubmissionMode
+from backend.runtime.jobs.cancellation import CancellationGuard
 
 
 def click_sync_next_step(page: Page, log=print) -> None:
@@ -15,6 +16,7 @@ def submit_after_sync_save(
     use_ai: bool = False,
     log=print,
     scheduled_slot: ScheduledPublishSlot | None = None,
+    cancel: CancellationGuard | None = None,
 ) -> None:
     SubmissionFlow(
         page=page,
@@ -22,4 +24,5 @@ def submit_after_sync_save(
         use_ai=use_ai,
         log=log,
         scheduled_slot=scheduled_slot,
+        cancel=cancel,
     ).run()

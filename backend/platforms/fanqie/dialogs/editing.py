@@ -6,7 +6,11 @@ from playwright.sync_api import Page
 from backend.platforms.fanqie.actions.interactions import locator_count_safe
 from backend.platforms.fanqie.browser.session import save_debug
 
-def click_continue_edit_if_present(page: Page, log: Callable[[str], None] = print, timeout_ms: int = 3000) -> bool:
+def click_discard_stale_edit_if_present(
+    page: Page,
+    log: Callable[[str], None] = print,
+    timeout_ms: int = 3000,
+) -> bool:
     rounds = max(1, timeout_ms // 500)
     for _ in range(rounds):
         try:
@@ -14,10 +18,10 @@ def click_continue_edit_if_present(page: Page, log: Callable[[str], None] = prin
         except Exception:
             body = ""
         if ("刚刚更新的章节" in body and "继续编辑" in body) or ("是否继续编辑" in body and "继续编辑" in body):
-            log("检测到章节更新提示，自动点击继续编辑...")
-            save_debug(page, "dialog_continue_edit_detected")
+            log("检测到章节已在其他会话更新，自动放弃旧编辑缓存并加载最新版本...")
+            save_debug(page, "dialog_discard_stale_edit_detected")
             try:
-                loc = page.get_by_text("继续编辑", exact=True)
+                loc = page.get_by_role("button", name="放弃", exact=True)
                 count = locator_count_safe(loc)
                 for i in reversed(range(count)):
                     item = loc.nth(i)
@@ -25,7 +29,7 @@ def click_continue_edit_if_present(page: Page, log: Callable[[str], None] = prin
                         if item.is_visible() and item.is_enabled():
                             item.scroll_into_view_if_needed()
                             item.click(timeout=5000)
-                            save_debug(page, "dialog_continue_edit_clicked")
+                            save_debug(page, "dialog_discard_stale_edit_clicked")
                             page.wait_for_timeout(1800)
                             return True
                     except Exception:
@@ -61,6 +65,7 @@ def click_continue_edit_if_present(page: Page, log: Callable[[str], None] = prin
                         if (text.includes('刚刚更新的章节')) score += 10;
                         if (text.includes('是否继续编辑')) score += 10;
                         if (text.includes('继续编辑')) score += 10;
+                        if (text.includes('放弃')) score += 10;
                         if (rect.width >= 300 && rect.width <= 760 && rect.height >= 160 && rect.height <= 520) score += 4;
                         return {el, rect, text, area, score};
                     })
@@ -69,7 +74,7 @@ def click_continue_edit_if_present(page: Page, log: Callable[[str], None] = prin
                 const root = roots.length ? roots[0].el : document.body;
                 const buttons = Array.from(root.querySelectorAll('button, span, div'))
                     .filter(visible)
-                    .filter(el => compactText(el) === '继续编辑');
+                    .filter(el => compactText(el) === '放弃');
                 for (const el of buttons.reverse()) {
                     const clickable = el.closest('button') || el;
                     try {
@@ -82,34 +87,17 @@ def click_continue_edit_if_present(page: Page, log: Callable[[str], None] = prin
                         } catch (e2) {}
                     }
                 }
-                if (roots.length) {
-                    const rect = roots[0].rect;
-                    const points = [
-                        [rect.left + rect.width * 0.78, rect.top + rect.height * 0.78],
-                        [rect.left + rect.width * 0.82, rect.top + rect.height * 0.78],
-                        [rect.left + rect.width * 0.75, rect.top + rect.height * 0.78],
-                    ];
-                    for (const [x, y] of points) {
-                        const target = document.elementFromPoint(x, y);
-                        if (!target) continue;
-                        const clickable = target.closest('button') || target;
-                        try {
-                            clickable.click();
-                            return true;
-                        } catch (e) {}
-                    }
-                }
                 return false;
             }
             """
             try:
                 if page.evaluate(script):
-                    save_debug(page, "dialog_continue_edit_clicked_js")
+                    save_debug(page, "dialog_discard_stale_edit_clicked_js")
                     page.wait_for_timeout(1800)
                     return True
             except Exception:
                 pass
-            raise RuntimeError("检测到章节更新提示，但未能点击“继续编辑”。")
+            raise RuntimeError("检测到章节更新提示，但未能点击“放弃”以清除旧编辑缓存。")
         page.wait_for_timeout(500)
     return False
 

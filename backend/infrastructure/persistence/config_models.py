@@ -14,6 +14,7 @@ class TaskSettings(BaseModel):
     verify_after_publish: bool = Field(default=True, alias="verifyAfterPublish")
     debug_screenshots: bool = Field(default=True, alias="debugScreenshots")
     failure_screenshots: bool = Field(default=True, alias="failureScreenshots")
+    browser_headless: bool = Field(default=True, alias="browserHeadless")
     dedupe_debug_screenshots: bool = Field(default=True, alias="dedupeDebugScreenshots")
     git_tracking: bool = Field(default=True, alias="gitTracking")
     operation: str = "publish"
@@ -24,6 +25,8 @@ class TaskSettings(BaseModel):
     schedule_afternoon_time: str = Field(default="18:00", alias="scheduleAfternoonTime")
     schedule_afternoon_count: int = Field(default=0, ge=0, alias="scheduleAfternoonCount")
     chapter_selection: str = Field(default="", alias="chapterSelection")
+    sync_concurrency: int = Field(default=2, alias="syncConcurrency", ge=1, le=4)
+    clear_author_note: bool = Field(default=False, alias="clearAuthorNote")
 
 
 class AppConfigModel(BaseModel):

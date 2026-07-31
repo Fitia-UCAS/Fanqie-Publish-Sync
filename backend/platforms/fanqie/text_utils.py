@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 
 from backend.features.novel_processing.text_normalizer import normalize_novel_body
 
 _WHITESPACE_CHAR_RE = re.compile(r"[ \f\n\r\t\v\u00a0\u1680\u180e\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]")
+_ASCII_WORD_RE = re.compile(r"[A-Za-z0-9]+")
 
 
 def count_non_whitespace_chars(text: str) -> int:
@@ -18,7 +20,22 @@ def count_non_whitespace_chars(text: str) -> int:
 
 
 def chapter_len(text: str) -> int:
-    return count_non_whitespace_chars(normalize_novel_body(text or ""))
+    return count_platform_estimated_chars(normalize_novel_body(text or ""))
+
+
+def count_platform_estimated_chars(text: str) -> int:
+    """Estimate Fanqie's chapter-list count without treating it as an exact API contract."""
+
+    compact = _WHITESPACE_CHAR_RE.sub("", text or "")
+    visible = "".join(
+        char
+        for char in compact
+        if not (
+            ord(char) > 127
+            and unicodedata.category(char).startswith(("S", "M"))
+        )
+    )
+    return len(_ASCII_WORD_RE.sub("A", visible))
 
 
 def word_count_tolerance(expected: int) -> int:
@@ -59,6 +76,7 @@ def is_row_count_compatible(row: dict | None, expected: int) -> bool:
 __all__ = [
     "chapter_len",
     "count_non_whitespace_chars",
+    "count_platform_estimated_chars",
     "word_count_tolerance",
     "is_platform_count_compatible",
     "is_row_count_compatible",

@@ -23,8 +23,10 @@ def run_chapter_sync(
     verify_after_publish: bool = True,
     debug_screenshots: bool = True,
     failure_screenshots: bool = True,
+    browser_headless: bool = True,
     git_tracking: bool = True,
     auth_state_path: str = "",
+    clear_author_note: bool = False,
     manual_schedule_enabled: bool = False,
     schedule_start_date: str = "",
     schedule_morning_time: str = "10:00",
@@ -41,14 +43,17 @@ def run_chapter_sync(
         verify_after_publish=verify_after_publish,
         debug_screenshots=debug_screenshots,
         failure_screenshots=failure_screenshots,
+        browser_headless=browser_headless,
         git_tracking=git_tracking,
         auth_state_path=auth_state_path,
+        clear_author_note=clear_author_note,
     )
     session = BrowserSession.open(
         debug_category="chapter_sync",
         debug_enabled=debug_screenshots,
         failure_debug_enabled=failure_screenshots,
         auth_state_path=auth_state_path,
+        headless=options.browser_headless,
     )
     page = session.page
     try:

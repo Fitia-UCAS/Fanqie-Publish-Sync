@@ -6,6 +6,7 @@ from playwright.sync_api import Page
 
 from backend.platforms.fanqie.actions.navigation import click_next_page, click_page_number, get_visible_page_numbers
 from backend.platforms.fanqie.actions.interactions import dismiss_popups, ensure_logged_in, goto_chapter_manage, normalize_chapter_no
+from backend.platforms.fanqie.pages.pagination_plan import CHAPTERS_PER_PAGE, planned_reverse_page_numbers
 
 def collect_editor_links_on_current_page(page: Page) -> dict[int, str]:
     script = r"""
@@ -116,9 +117,7 @@ def collect_chapter_rows_on_current_page(page: Page) -> dict[int, dict[str, Any]
             const style = window.getComputedStyle(el);
             const rect = el.getBoundingClientRect();
             return rect.width > 0 && rect.height > 0 &&
-                   style.visibility !== 'hidden' && style.display !== 'none' &&
-                   rect.bottom >= 0 && rect.right >= 0 &&
-                   rect.top <= window.innerHeight && rect.left <= window.innerWidth;
+                   style.visibility !== 'hidden' && style.display !== 'none';
         }
         function clean(s) { return String(s || '').replace(/\r/g, '').trim(); }
         function compact(s) { return clean(s).replace(/\s+/g, ''); }
@@ -259,14 +258,16 @@ def build_chapter_row_index(
     goto_chapter_manage(page, chapter_manage_url)
     ensure_logged_in(page, chapter_manage_url, log=log)
     dismiss_popups(page)
+    if click_page_number(page, 1):
+        dismiss_popups(page)
 
     found: dict[int, dict] = {}
-    visited_pages: set[int] = set()
+    visited_pages: set[int] = {1}
     stagnant_rounds = 0
 
-    def collect() -> int:
+    def collect(rows: dict[int, dict[str, Any]] | None = None) -> int:
         before = len(found)
-        for no, row in collect_chapter_rows_on_current_page_deep(page).items():
+        for no, row in (rows or collect_chapter_rows_on_current_page(page)).items():
             if no in wanted:
                 found.setdefault(no, row)
         return len(found) - before
@@ -277,9 +278,23 @@ def build_chapter_row_index(
             return True
         return False
 
-    collect()
+    first_page_rows = collect_chapter_rows_on_current_page(page)
+    collect(first_page_rows)
     if finish_if_complete():
         return found
+
+    latest_chapter_no = max(first_page_rows, default=0)
+    planned_pages = planned_reverse_page_numbers(latest_chapter_no, wanted)
+    direct_pages = [page_no for page_no in planned_pages if page_no != 1]
+    if direct_pages:
+        log(f"按每页 {CHAPTERS_PER_PAGE} 章计算目标页，直接定位页码：{', '.join(map(str, direct_pages))}。")
+    for page_no in direct_pages:
+        visited_pages.add(page_no)
+        if click_page_number(page, page_no):
+            dismiss_popups(page)
+            collect()
+            if finish_if_complete():
+                return found
 
     for _ in range(40):
         progressed = False
@@ -335,14 +350,16 @@ def build_chapter_editor_index(
     goto_chapter_manage(page, chapter_manage_url)
     ensure_logged_in(page, chapter_manage_url, log=log)
     dismiss_popups(page)
+    if click_page_number(page, 1):
+        dismiss_popups(page)
 
     found: dict[int, str] = {}
-    visited_pages: set[int] = set()
+    visited_pages: set[int] = {1}
     stagnant_rounds = 0
 
-    def collect() -> int:
+    def collect(links: dict[int, str] | None = None) -> int:
         before = len(found)
-        for no, href in collect_editor_links_on_current_page_deep(page).items():
+        for no, href in (links or collect_editor_links_on_current_page(page)).items():
             if no in wanted:
                 found.setdefault(no, href)
         return len(found) - before
@@ -353,9 +370,23 @@ def build_chapter_editor_index(
             return True
         return False
 
-    collect()
+    first_page_links = collect_editor_links_on_current_page(page)
+    collect(first_page_links)
     if finish_if_complete():
         return found
+
+    latest_chapter_no = max(first_page_links, default=0)
+    planned_pages = planned_reverse_page_numbers(latest_chapter_no, wanted)
+    direct_pages = [page_no for page_no in planned_pages if page_no != 1]
+    if direct_pages:
+        log(f"按每页 {CHAPTERS_PER_PAGE} 章计算目标页，直接定位页码：{', '.join(map(str, direct_pages))}。")
+    for page_no in direct_pages:
+        visited_pages.add(page_no)
+        if click_page_number(page, page_no):
+            dismiss_popups(page)
+            collect()
+            if finish_if_complete():
+                return found
 
 
     for _ in range(40):

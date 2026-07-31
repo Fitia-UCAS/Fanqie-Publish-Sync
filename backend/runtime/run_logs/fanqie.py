@@ -126,6 +126,14 @@ class FanqieTaskLog:
                 return "info", f"第 {chapter_no} 章（{index}/{total}）：处理中..."
             return "info", message
 
+        if message.startswith("并发进度："):
+            match = re.search(r"第\s*(\d+)\s*章.*?（\s*(\d+)\s*/\s*(\d+)\s*）", message)
+            if match:
+                chapter_no, completed, total = (int(value) for value in match.groups())
+                self.callbacks.emit_progress(completed, total)
+                return "success", f"第 {chapter_no} 章已结束（{completed}/{total}）。"
+            return "info", message
+
         if "检测到未登录" in message:
             return "warning", "检测到未登录，请先在 Edge 里完成番茄后台登录。"
 

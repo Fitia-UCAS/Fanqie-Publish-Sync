@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import replace
 from pathlib import Path
+from threading import Lock
 from typing import Callable
 
 from backend.platforms.fanqie.syncing.local_source import Chapter, get_local_chapter, parse_chapters
-from backend.runtime.errors import ErrorStage
+from backend.runtime.errors import ErrorStage, TaskCancelled
+from backend.runtime.jobs.cancellation import CancellationGuard
 from backend.features.syncing.models import ChapterSyncOptions, ChapterSyncResult
 from backend.features.syncing.options import make_chapter_sync_options
 from backend.platforms.fanqie.syncing.single import run_single_chapter_sync
@@ -29,8 +32,11 @@ def run_multi_chapter_sync(
     verify_after_publish: bool = True,
     debug_screenshots: bool = True,
     failure_screenshots: bool = True,
+    browser_headless: bool = True,
     git_tracking: bool = True,
     auth_state_path: str = "",
+    concurrency: int = 2,
+    clear_author_note: bool = False,
     manual_schedule_enabled: bool = False,
     schedule_start_date: str = "",
     schedule_morning_time: str = "10:00",
@@ -48,8 +54,11 @@ def run_multi_chapter_sync(
         verify_after_publish=verify_after_publish,
         debug_screenshots=debug_screenshots,
         failure_screenshots=failure_screenshots,
+        browser_headless=browser_headless,
         git_tracking=git_tracking,
         auth_state_path=auth_state_path,
+        concurrency=concurrency,
+        clear_author_note=clear_author_note,
         schedule_slots=build_schedule_slots(
             chapters,
             enabled=manual_schedule_enabled and direction == "local_to_remote" and not check_only,
@@ -77,37 +86,79 @@ def run_multi_chapter_sync(
         debug_enabled=options.debug_screenshots,
         failure_debug_enabled=options.failure_screenshots,
         auth_state_path=options.auth_state_path,
+        headless=options.browser_headless,
     )
     page = session.page
     state = MultiChapterSyncState(chapters=list(chapters), results=[], result_chapter_numbers=[])
+    cancel = CancellationGuard(stop_requested)
+    log_lock = Lock()
+
+    def synchronized_log(message: str) -> None:
+        with log_lock:
+            log(message)
+
     try:
+        cancel.checkpoint()
+        if options.browser_headless:
+            synchronized_log("同步浏览器已静默运行，不会弹出网页窗口。")
+        else:
+            synchronized_log("同步浏览器窗口已显示，可用于观察和排错。")
         local_chapters = _local_chapters_by_number(novel_file, chapters)
-        log("正文实时读取已启用：每章操作前都会重新读取本地小说来源。")
+        synchronized_log("正文实时读取已启用：每章操作前都会重新读取本地小说来源。")
         if options.direction == "local_to_remote":
-            log("正文校准已启用：会进入编辑页读取标题/正文，与本地一致则继续确认发布；存在差异才覆盖。")
+            synchronized_log(
+                "本地强制覆盖已启用：编辑页可能残留旧草稿，每章都会重新写入本地标题和完整正文后再提交。"
+            )
 
         editor_url_cache = _index_editors_if_needed(
             page,
             chapter_manage_url=chapter_manage_url,
             chapters=chapters,
             editor_url_cache={},
-            log=log,
+            log=synchronized_log,
         )
         if not chapters:
-            log("没有需要处理的章节。")
+            synchronized_log("没有需要处理的章节。")
 
-        _process_chapters(
-            page=page,
-            novel_file=novel_file,
+        parallel_chapters, serial_chapters = _split_parallel_chapters(
             chapters=chapters,
-            local_chapters=local_chapters,
-            base_options=options,
+            options=options,
             editor_url_cache=editor_url_cache,
-            state=state,
-            log=log,
-            stop_requested=stop_requested,
-            pause_requested=pause_requested,
         )
+        if parallel_chapters and options.concurrency > 1:
+            synchronized_log(
+                f"受控并发同步已启用：{min(options.concurrency, len(parallel_chapters))} 路；"
+                "每路使用独立浏览器会话，最多同时处理 4 章。"
+            )
+            _process_indexed_chapters_concurrently(
+                novel_file=novel_file,
+                chapters=parallel_chapters,
+                base_options=options,
+                editor_url_cache=editor_url_cache,
+                state=state,
+                log=synchronized_log,
+                cancel=cancel,
+                pause_requested=pause_requested,
+            )
+        else:
+            serial_chapters = chapters
+
+        if serial_chapters and not cancel.requested():
+            if parallel_chapters:
+                synchronized_log("没有直接编辑入口的章节将改为串行处理，避免并发新建造成章节错位。")
+            _process_chapters(
+                page=page,
+                novel_file=novel_file,
+                chapters=serial_chapters,
+                local_chapters=local_chapters,
+                base_options=options,
+                editor_url_cache=editor_url_cache,
+                state=state,
+                log=synchronized_log,
+                stop_requested=stop_requested,
+                pause_requested=pause_requested,
+                cancel=cancel,
+            )
         if not _stop_requested(stop_requested):
             _final_list_verify_if_needed(
                 page=page,
@@ -117,8 +168,12 @@ def run_multi_chapter_sync(
                 chapters=chapters,
                 novel_file=novel_file,
                 state=state,
-                log=log,
+                log=synchronized_log,
+                cancel=cancel,
             )
+        return state.results
+    except TaskCancelled:
+        synchronized_log("已立即终止同步，所有活动章节正在退出。")
         return state.results
     finally:
         session.close()
@@ -164,6 +219,150 @@ def _index_editors_if_needed(
     return editor_url_cache
 
 
+def _split_parallel_chapters(
+    *,
+    chapters: list[int],
+    options: ChapterSyncOptions,
+    editor_url_cache: dict[int, str],
+) -> tuple[list[int], list[int]]:
+    parallel_allowed = (
+        options.is_publish_to_remote
+        and options.concurrency > 1
+        and not options.schedule_slots
+    )
+    if not parallel_allowed:
+        return [], list(chapters)
+    parallel = [chapter_no for chapter_no in chapters if editor_url_cache.get(chapter_no)]
+    serial = [chapter_no for chapter_no in chapters if chapter_no not in set(parallel)]
+    return parallel, serial
+
+
+def _process_indexed_chapters_concurrently(
+    *,
+    novel_file: Path,
+    chapters: list[int],
+    base_options: ChapterSyncOptions,
+    editor_url_cache: dict[int, str],
+    state: MultiChapterSyncState,
+    log: Callable[[str], None],
+    cancel: CancellationGuard,
+    pause_requested: Callable[[], bool] | None = None,
+) -> None:
+    worker_count = max(1, min(4, int(base_options.concurrency), len(chapters)))
+    per_chapter_options = (
+        replace(base_options, verify_after_publish=False)
+        if base_options.should_final_list_verify
+        else base_options
+    )
+    pending: dict[Future[ChapterSyncResult], int] = {}
+    next_index = 0
+    completed = 0
+
+    with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="fanqie-sync") as executor:
+        try:
+            while pending or next_index < len(chapters):
+                cancel.checkpoint()
+                if pause_requested and pause_requested() and not pending:
+                    _wait_while_paused(
+                        pause_requested=pause_requested,
+                        stop_requested=cancel.requested,
+                        log=log,
+                        label="同步",
+                    )
+                    cancel.checkpoint()
+
+                while (
+                    next_index < len(chapters)
+                    and len(pending) < worker_count
+                    and not (pause_requested and pause_requested())
+                ):
+                    chapter_no = chapters[next_index]
+                    next_index += 1
+                    log(f"并发任务启动：第 {chapter_no} 章（{next_index}/{len(chapters)}）")
+                    future = executor.submit(
+                        _run_indexed_chapter_worker,
+                        novel_file=novel_file,
+                        chapter_no=chapter_no,
+                        options=per_chapter_options,
+                        editor_url=editor_url_cache[chapter_no],
+                        log=log,
+                        cancel=cancel,
+                    )
+                    pending[future] = chapter_no
+
+                if not pending:
+                    continue
+                done, _not_done = wait(tuple(pending), timeout=0.2, return_when=FIRST_COMPLETED)
+                for future in done:
+                    chapter_no = pending.pop(future)
+                    try:
+                        result = future.result()
+                    except TaskCancelled:
+                        continue
+                    state.append(chapter_no, result)
+                    completed += 1
+                    log(f"并发进度：第 {chapter_no} 章已结束（{completed}/{len(chapters)}）")
+        except TaskCancelled:
+            for future in pending:
+                future.cancel()
+            raise
+
+
+def _run_indexed_chapter_worker(
+    *,
+    novel_file: Path,
+    chapter_no: int,
+    options: ChapterSyncOptions,
+    editor_url: str,
+    log: Callable[[str], None],
+    cancel: CancellationGuard,
+) -> ChapterSyncResult:
+    session = None
+
+    def chapter_log(message: str) -> None:
+        log(f"[第 {chapter_no} 章] {message}")
+
+    try:
+        cancel.checkpoint()
+        session = BrowserSession.open(
+            debug_category="chapter_sync",
+            debug_enabled=options.debug_screenshots,
+            failure_debug_enabled=options.failure_screenshots,
+            auth_state_path=options.auth_state_path,
+            headless=options.browser_headless,
+        )
+        cancel.checkpoint()
+        local_chapter = get_local_chapter(novel_file, chapter_no)
+        return run_single_chapter_sync(
+            page=session.page,
+            novel_file=novel_file,
+            chapter_no=chapter_no,
+            options=options,
+            log=chapter_log,
+            local_chapter=local_chapter,
+            editor_url_cache={chapter_no: editor_url},
+            created_chapter_numbers=set(),
+            cancel=cancel,
+        )
+    except TaskCancelled:
+        raise
+    except Exception as exc:
+        if session is not None:
+            save_failure_debug(session.page, f"chapter_{chapter_no:03d}_failed")
+        msg = f"失败：第 {chapter_no} 章｜{exc}"
+        chapter_log(msg)
+        return ChapterSyncResult(
+            ok=False,
+            changed=False,
+            published=False,
+            message=msg,
+            error_stage=ErrorStage.CHAPTER,
+        )
+    finally:
+        if session is not None:
+            session.close(save_state=False)
+
+
 def _process_chapters(
     *,
     page,
@@ -176,7 +375,9 @@ def _process_chapters(
     log: Callable[[str], None],
     stop_requested: Callable[[], bool] | None = None,
     pause_requested: Callable[[], bool] | None = None,
+    cancel: CancellationGuard | None = None,
 ) -> None:
+    cancel = cancel or CancellationGuard(stop_requested)
     process_total = len(chapters)
     created_chapter_numbers: set[int] = set()
     per_chapter_options = (
@@ -185,13 +386,9 @@ def _process_chapters(
         else base_options
     )
     for index, chapter_no in enumerate(chapters, start=1):
-        if _stop_requested(stop_requested):
-            log("已终止同步。")
-            break
+        cancel.checkpoint()
         _wait_while_paused(pause_requested=pause_requested, stop_requested=stop_requested, log=log, label="同步")
-        if _stop_requested(stop_requested):
-            log("已终止同步。")
-            break
+        cancel.checkpoint()
         log(f"后台批量处理：第 {chapter_no} 章（{index}/{process_total}）")
         try:
             local_chapter = get_local_chapter(novel_file, chapter_no)
@@ -207,8 +404,11 @@ def _process_chapters(
                     local_chapter=local_chapter,
                     editor_url_cache=editor_url_cache,
                     created_chapter_numbers=created_chapter_numbers,
+                    cancel=cancel,
                 ),
             )
+        except TaskCancelled:
+            raise
         except Exception as exc:
             _record_chapter_failure(
                 page=page,
@@ -242,7 +442,10 @@ def _final_list_verify_if_needed(
     novel_file: Path,
     state: MultiChapterSyncState,
     log: Callable[[str], None],
+    cancel: CancellationGuard | None = None,
 ) -> None:
+    cancel = cancel or CancellationGuard()
+    cancel.checkpoint()
     if not options.should_final_list_verify:
         return
     chapter_numbers = [
@@ -262,6 +465,7 @@ def _final_list_verify_if_needed(
         local_chapters=local_chapters,
         chapter_numbers=chapter_numbers,
         log=log,
+        cancel=cancel,
     )
     if failures:
         _mark_list_verify_failures(failures=failures, state=state, log=log)

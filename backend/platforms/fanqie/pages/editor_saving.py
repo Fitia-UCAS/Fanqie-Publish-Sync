@@ -7,12 +7,21 @@ from playwright.sync_api import Page
 
 from backend.platforms.fanqie.actions.interactions import locator_count_safe
 from backend.platforms.fanqie.browser.session import save_debug
+from backend.runtime.errors import TaskCancelled
+from backend.runtime.jobs.cancellation import CancellationGuard
 
-def wait_for_editor_saved(page: Page, *, timeout_ms: int = 15000) -> bool:
+def wait_for_editor_saved(
+    page: Page,
+    *,
+    timeout_ms: int = 15000,
+    cancel: CancellationGuard | None = None,
+) -> bool:
+    cancel = cancel or CancellationGuard()
     end_rounds = max(1, timeout_ms // 500)
     saw_saving = False
     saw_any_state = False
     for _ in range(end_rounds):
+        cancel.checkpoint()
         try:
             body = page.locator("body").inner_text(timeout=800)
         except Exception:
@@ -21,18 +30,20 @@ def wait_for_editor_saved(page: Page, *, timeout_ms: int = 15000) -> bool:
         if "保存中" in compact:
             saw_saving = True
             saw_any_state = True
-            page.wait_for_timeout(500)
+            cancel.wait_page(page, 500)
             continue
         if "已保存" in compact or "保存成功" in compact:
             return True
         if "保存失败" in compact:
             return False
-        page.wait_for_timeout(500)
+        cancel.wait_page(page, 500)
 
     return not saw_any_state or not saw_saving
 
 
-def click_save_draft(page: Page, log=print) -> None:
+def click_save_draft(page: Page, log=print, *, cancel: CancellationGuard | None = None) -> None:
+    cancel = cancel or CancellationGuard()
+    cancel.checkpoint()
     save_debug(page, "save_draft_before")
     save_words = ["保存草稿", "保存", "存草稿", "确认保存"]
     for word in save_words:
@@ -41,6 +52,7 @@ def click_save_draft(page: Page, log=print) -> None:
         for i in range(count):
             item = loc.nth(i)
             try:
+                cancel.checkpoint()
                 if item.is_visible() and item.is_enabled():
                     item.scroll_into_view_if_needed()
                     text = (item.inner_text(timeout=1000) or "").strip()
@@ -48,12 +60,14 @@ def click_save_draft(page: Page, log=print) -> None:
                         continue
                     item.click(timeout=10000)
                     save_debug(page, "save_draft_clicked")
-                    page.wait_for_timeout(800)
-                    if not wait_for_editor_saved(page, timeout_ms=15000):
+                    cancel.wait_page(page, 800)
+                    if not wait_for_editor_saved(page, timeout_ms=15000, cancel=cancel):
                         save_debug(page, "save_draft_state_failed", force=True)
                         raise RuntimeError("保存草稿后未等到“已保存”状态。")
                     save_debug(page, "save_draft_after")
                     return
+            except TaskCancelled:
+                raise
             except Exception:
                 continue
     save_debug(page, "save_draft_button_not_found", force=True)

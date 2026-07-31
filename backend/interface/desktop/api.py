@@ -219,7 +219,7 @@ class WebviewApi:
         return self._tasks.stop("auto_publish", "auto_publish", "已请求终止发布，当前章节结束后会终止。")
 
     def chapter_sync_stop(self) -> bool:
-        return self._tasks.stop("chapter_sync", "chapter_sync", "已请求终止同步，当前章节结束后会终止。")
+        return self._tasks.stop("chapter_sync", "chapter_sync", "已请求立即终止同步，正在取消所有章节操作。")
 
     def auto_publish_pause(self) -> bool:
         return self._tasks.pause("auto_publish", "auto_publish", "已暂缓发布。")

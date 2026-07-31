@@ -1,5 +1,9 @@
 window.renderFanqieSyncerPage = function renderFanqieSyncerPage(app) {
   const cfg = app.state.config.chapter_sync || {};
+  const configuredConcurrency = Number(cfg.syncConcurrency);
+  const concurrencyValue = Number.isInteger(configuredConcurrency) && configuredConcurrency >= 1 && configuredConcurrency <= 4
+    ? configuredConcurrency
+    : '';
   return `
     <section class="page active" data-page="chapter_sync">
       <div class="fanqie-task-grid">
@@ -15,8 +19,12 @@ window.renderFanqieSyncerPage = function renderFanqieSyncerPage(app) {
                 <input class="input" id="syUrl" type="password" value="${app.attr(cfg.chapterManageUrl || '')}" data-masked-url="true" placeholder="https://fanqienovel.com/..." autocomplete="off" spellcheck="false" />
               </div>
               <div class="field">
+                <label>并发线程</label>
+                <input class="input" id="sySyncConcurrency" type="number" min="1" max="4" value="${app.attr(concurrencyValue)}" placeholder="如：1–4（默认 2）" />
+              </div>
+              <div class="field">
                 <label>指定章节</label>
-                <input class="input" id="syChapterSelection" type="text" value="${app.attr(cfg.chapterSelection || '')}" placeholder="如：28、29、48、51、53、70" autocomplete="off" />
+                <input class="input" id="syChapterSelection" type="text" value="${app.attr(cfg.chapterSelection || '')}" placeholder="如：28、29、48；填写后忽略下方范围" autocomplete="off" />
               </div>
               <div class="field-pair">
                 <div class="field"><label>起始章节</label><input class="input" id="syStart" type="number" min="1" value="${app.attr(cfg.start || 1)}" /></div>
@@ -28,8 +36,10 @@ window.renderFanqieSyncerPage = function renderFanqieSyncerPage(app) {
                 <label><input type="checkbox" id="syVerifyAfterPublish" ${cfg.verifyAfterPublish !== false ? 'checked' : ''}/> 列表校验</label>
                 <label><input type="checkbox" id="syDebugScreenshots" ${cfg.debugScreenshots !== false ? 'checked' : ''}/> 步骤截图</label>
                 <label><input type="checkbox" id="syFailureScreenshots" ${cfg.failureScreenshots !== false ? 'checked' : ''}/> 失败截图</label>
+                <label><input type="checkbox" id="syBrowserHeadless" ${cfg.browserHeadless !== false ? 'checked' : ''}/> 浏览器静默运行</label>
                 <label><input type="checkbox" id="syGitTracking" ${cfg.gitTracking !== false ? 'checked' : ''}/> Git追踪</label>
                 <label><input type="checkbox" id="syManualSchedule" ${cfg.manualSchedule ? 'checked' : ''}/> 手动定时</label>
+                <label><input type="checkbox" id="syClearAuthorNote" ${cfg.clearAuthorNote ? 'checked' : ''}/> 清空作者有话说</label>
               </div>
               <div class="manual-schedule-fields ${cfg.manualSchedule ? '' : 'hidden'}" id="syManualScheduleFields">
                 <div class="field schedule-date-field"><label>起始日期</label><input class="input" id="syScheduleStartDate" type="date" value="${app.attr(cfg.scheduleStartDate || '')}" /></div>

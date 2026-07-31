@@ -10,7 +10,7 @@ from playwright.sync_api import Page
 from backend.platforms.fanqie.actions.interactions import locator_count_safe
 from backend.platforms.fanqie.browser.session import page_failure_context, save_debug, save_failure_debug
 from backend.platforms.fanqie.dialogs.editing import (
-    click_continue_edit_if_present,
+    click_discard_stale_edit_if_present,
     click_non_chapter_submit_if_present,
     click_typo_submit_if_present,
 )
@@ -24,6 +24,7 @@ from backend.platforms.fanqie.dialogs.publishing import (
     publish_settings_visible,
 )
 from backend.platforms.fanqie.models import ScheduledPublishSlot
+from backend.runtime.jobs.cancellation import CancellationGuard
 
 
 class SubmissionMode(str, Enum):
@@ -48,6 +49,7 @@ class SubmissionFlow:
     scheduled_slot: ScheduledPublishSlot | None = None
     phase: SubmissionPhase = SubmissionPhase.READY
     daily_limit_reschedule_attempts: int = 0
+    cancel: CancellationGuard | None = None
     _reported_failures: set[str] = field(default_factory=set, init=False)
 
     @property
@@ -59,12 +61,15 @@ class SubmissionFlow:
         return "发布设置" if self.mode is SubmissionMode.PUBLISH else "提交设置"
 
     def run(self) -> None:
+        self._checkpoint()
         save_debug(self.page, f"{self.debug_prefix}_flow_start")
         self.enter_settings()
         confirmed = False
 
         for round_no in range(1, 70):
+            self._checkpoint()
             handled = self._handle_intermediate_dialogs(timeout_ms=300)
+            self._checkpoint()
 
             if publish_settings_visible(self.page):
                 self.phase = SubmissionPhase.CONFIGURING
@@ -88,7 +93,7 @@ class SubmissionFlow:
                     return
 
             if not handled:
-                self.page.wait_for_timeout(600)
+                self._wait(600)
 
         save_debug(self.page, f"{self.debug_prefix}_flow_timeout", force=True)
         action = "发布确认" if self.mode is SubmissionMode.PUBLISH else "同步提交确认"
@@ -97,11 +102,13 @@ class SubmissionFlow:
         )
 
     def enter_settings(self) -> None:
+        self._checkpoint()
         self.phase = SubmissionPhase.ENTERING_SETTINGS
         self.log("正在点击下一步...")
         save_debug(self.page, f"{self.debug_prefix}_next_step_before")
 
         for attempt in range(1, 4):
+            self._checkpoint()
             if not self._click_next_step_once():
                 if attempt == 3:
                     self._report_failure_once(
@@ -117,10 +124,11 @@ class SubmissionFlow:
                             locator='role=button[name="下一步"] / DOM fallback',
                         )
                     )
-                self.page.wait_for_timeout(1000)
+                self._wait(1000)
                 continue
 
             for _ in range(80):
+                self._checkpoint()
                 if self._wait_for_settings_or_handle_dialog():
                     self.phase = SubmissionPhase.CONFIGURING
                     return
@@ -128,16 +136,18 @@ class SubmissionFlow:
             if attempt < 3:
                 save_debug(self.page, f"{self.debug_prefix}_settings_not_visible_attempt_{attempt}")
                 self.log(f"未等到{self.settings_label}弹窗，重试点击“下一步”...")
-                self.page.wait_for_timeout(1200)
+                self._wait(1200)
 
         save_debug(self.page, f"{self.debug_prefix}_next_step_failed", force=True)
         raise RuntimeError(f"点击“下一步”后仍未检测到{self.settings_label}弹窗，可能被页面校验/保存状态拦截。")
 
     def _click_next_step_once(self) -> bool:
+        self._checkpoint()
         last_error: PlaywrightError | None = None
         try:
             buttons = self.page.get_by_role("button", name="下一步", exact=True)
             for index in reversed(range(locator_count_safe(buttons))):
+                self._checkpoint()
                 button = buttons.nth(index)
                 try:
                     button.click(timeout=10000)
@@ -202,37 +212,40 @@ class SubmissionFlow:
             return False
 
     def _wait_for_settings_or_handle_dialog(self) -> bool:
+        self._checkpoint()
         if click_basic_content_check_if_present(self.page, log=self.log, timeout_ms=500):
-            self.page.wait_for_timeout(1000)
+            self._wait(1000)
         if publish_settings_visible(self.page):
             save_debug(self.page, f"{self.debug_prefix}_settings_visible_after_next")
             return True
-        if click_continue_edit_if_present(self.page, log=self.log, timeout_ms=500):
-            self.page.wait_for_timeout(800)
+        if click_discard_stale_edit_if_present(self.page, log=self.log, timeout_ms=500):
+            self._wait(800)
         if click_typo_submit_if_present(self.page, log=self.log, timeout_ms=500):
-            self.page.wait_for_timeout(1000)
+            self._wait(1000)
         if click_non_chapter_submit_if_present(self.page, log=self.log, timeout_ms=500):
-            self.page.wait_for_timeout(1000)
+            self._wait(1000)
         if publish_settings_visible(self.page):
             save_debug(self.page, f"{self.debug_prefix}_settings_visible_after_dialog")
             return True
-        self.page.wait_for_timeout(500)
+        self._wait(500)
         return False
 
     def _handle_intermediate_dialogs(self, *, timeout_ms: int) -> bool:
         handlers = (
             click_basic_content_check_if_present,
-            click_continue_edit_if_present,
+            click_discard_stale_edit_if_present,
             click_typo_submit_if_present,
             click_non_chapter_submit_if_present,
         )
         handled = False
         for handler in handlers:
+            self._checkpoint()
             if handler(self.page, log=self.log, timeout_ms=timeout_ms):
                 handled = True
         return handled
 
     def _configure_publish_settings(self) -> None:
+        self._checkpoint()
         if self.scheduled_slot is not None:
             ensure_scheduled_publish(
                 self.page,
@@ -250,6 +263,7 @@ class SubmissionFlow:
             )
             self.daily_limit_reschedule_attempts += 1
         choose_ai_option(self.page, use_ai=self.use_ai, log=self.log)
+        self._checkpoint()
 
     def _handle_post_confirmation_dialogs(self) -> bool:
         handled_typo = click_typo_submit_if_present(self.page, log=self.log, timeout_ms=300)
@@ -292,6 +306,16 @@ class SubmissionFlow:
         self._reported_failures.add(key)
         save_failure_debug(self.page, f"{self.debug_prefix}_{key}")
         self.log(f"页面操作失败：{page_failure_context(self.page, stage, locator=locator, error=error)}")
+
+    def _checkpoint(self) -> None:
+        if self.cancel is not None:
+            self.cancel.checkpoint()
+
+    def _wait(self, timeout_ms: int) -> None:
+        if self.cancel is None:
+            self.page.wait_for_timeout(timeout_ms)
+            return
+        self.cancel.wait_page(self.page, timeout_ms)
 
 
 __all__ = ["SubmissionFlow", "SubmissionMode", "SubmissionPhase"]

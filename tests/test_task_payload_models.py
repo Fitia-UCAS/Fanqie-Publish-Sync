@@ -48,3 +48,39 @@ def test_sync_payload_rejects_invalid_explicit_chapters() -> None:
         SyncTaskPayload.model_validate(
             {"novelFile": "novel.txt", "chapterSelection": "28、第二十九章、48"}
         )
+
+
+def test_sync_payload_limits_concurrency_to_safe_range() -> None:
+    payload = SyncTaskPayload.model_validate({"novelFile": "novel.txt", "syncConcurrency": 4})
+
+    assert payload.sync_concurrency == 4
+
+    with pytest.raises(ValidationError):
+        SyncTaskPayload.model_validate({"novelFile": "novel.txt", "syncConcurrency": 5})
+
+
+def test_sync_payload_explicit_chapters_take_priority_over_range() -> None:
+    payload = SyncTaskPayload.model_validate(
+        {"novelFile": "novel.txt", "start": 1, "end": 86, "chapterSelection": "28、53"}
+    )
+
+    assert payload.chapters == [28, 53]
+
+
+@pytest.mark.parametrize("payload_type", [PublishTaskPayload, SyncTaskPayload])
+def test_task_payload_controls_browser_visibility(payload_type) -> None:
+    assert payload_type.model_validate({"novelFile": "novel.txt"}).browser_headless is True
+    assert (
+        payload_type.model_validate(
+            {"novelFile": "novel.txt", "browserHeadless": False}
+        ).browser_headless
+        is False
+    )
+
+
+def test_publish_payload_can_clear_independent_author_note_field() -> None:
+    payload = PublishTaskPayload.model_validate(
+        {"novelFile": "novel.txt", "clearAuthorNote": True}
+    )
+
+    assert payload.clear_author_note is True

@@ -45,6 +45,23 @@ def test_frontend_page_files_use_page_object_names() -> None:
     assert {path.stem for path in page_dir.glob("*.js")} == expected_pages
 
 
+def test_fanqie_pages_offer_browser_silent_mode_toggle() -> None:
+    page_dir = FRONTEND_DIR / "assets" / "pages"
+    sync_page = (page_dir / "fanqie_syncer.js").read_text(encoding="utf-8")
+    publish_page = (page_dir / "fanqie_publisher.js").read_text(encoding="utf-8")
+    actions = (FRONTEND_DIR / "assets" / "core" / "fanqie_task_actions.js").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'id="syBrowserHeadless"' in sync_page
+    assert 'id="apBrowserHeadless"' in publish_page
+    assert 'id="apClearAuthorNote"' in publish_page
+    assert "浏览器静默运行" in sync_page
+    assert "浏览器静默运行" in publish_page
+    assert "清空作者有话说" in publish_page
+    assert "browserHeadless:" in actions
+
+
 def test_frontend_core_scripts_load_before_app_shell() -> None:
     bundle = (FRONTEND_DIR / "assets" / "bundle.js").read_text(encoding="utf-8")
     app_start = bundle.index("const { pageTitles, defaultPage } = window.NovelConstants")
@@ -218,6 +235,8 @@ def test_sync_page_uses_one_explicit_chapter_field_and_keeps_pull_controls() -> 
     assert "syPullPause" in actions_js
     assert "syPullResume" in actions_js
     assert "syPullStop" in actions_js
+    assert "validateSyncConcurrency" in actions_js
+    assert "并发线程只能填写 1–4" in actions_js
     assert "payload.chapterSelection" in actions_js
     assert "payload.chapterOrder" not in actions_js
     assert syncer_js.index('id="syChapterSelection"') < syncer_js.index('id="syStart"')

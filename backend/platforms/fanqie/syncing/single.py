@@ -7,10 +7,10 @@ from backend.platforms.fanqie.syncing.applier import apply_local_to_remote, appl
 from backend.platforms.fanqie.syncing.editor import create_sync_remote_chapter_editor
 from backend.platforms.fanqie.syncing.local_source import Chapter, get_local_chapter
 from backend.features.syncing.models import ChapterSyncOptions, ChapterSyncResult
-from backend.platforms.fanqie.syncing.verifier import confirm_same_content_if_needed
 from backend.platforms.fanqie.browser.session import save_debug
 from backend.platforms.fanqie.pages.editor import ChapterEditorNotFound, get_remote_chapter, open_chapter_editor
 from backend.features.novel_processing.text_normalizer import normalize_novel_body, same_text
+from backend.runtime.jobs.cancellation import CancellationGuard
 
 
 def run_single_chapter_sync(
@@ -22,7 +22,10 @@ def run_single_chapter_sync(
     local_chapter: Chapter | None = None,
     editor_url_cache: dict[int, str] | None = None,
     created_chapter_numbers: set[int] | None = None,
+    cancel: CancellationGuard | None = None,
 ) -> ChapterSyncResult:
+    cancel = cancel or CancellationGuard()
+    cancel.checkpoint()
     local = local_chapter or get_local_chapter(novel_file, chapter_no)
     initial_local_title = local.subtitle
     log(f"本地：第 {chapter_no} 章《{initial_local_title}》")
@@ -40,10 +43,12 @@ def run_single_chapter_sync(
             initial_local_title,
             log=log,
             cached_editor_url=cached_editor_url,
+            cancel=cancel,
         )
+        cancel.checkpoint()
         save_debug(page, "before_read")
         remote_title, remote_body, title_loc, body_loc = get_remote_chapter(page)
-        log(f"番茄：标题《{remote_title}》")
+        log(f"编辑页草稿：标题《{remote_title}》")
     except ChapterEditorNotFound as exc:
         if not _can_create_missing(options):
             raise RuntimeError(f"未找到番茄后台第 {chapter_no} 章。当前操作不会新建章节。") from exc
@@ -55,6 +60,7 @@ def run_single_chapter_sync(
             created_chapter_numbers=created_chapter_numbers,
             log=log,
         )
+        cancel.checkpoint()
         page = created.page
         chapter_no_loc = created.chapter_no_loc
         title_loc = created.title_loc
@@ -67,6 +73,7 @@ def run_single_chapter_sync(
         log(f"番茄：第 {chapter_no} 章不存在，已打开新建章节编辑页。")
 
     latest_local = get_local_chapter(novel_file, chapter_no)
+    cancel.checkpoint()
     if latest_local.text != local.text:
         log(f"检测到第 {chapter_no} 章在任务运行期间发生修改，已重新读取最新正文。")
     local = latest_local
@@ -74,25 +81,31 @@ def run_single_chapter_sync(
     local_body_norm = normalize_novel_body(local.content)
     title_same = same_text(local_title, remote_title) or same_text(local.full_title, remote_title)
     body_same = same_text(local_body_norm, remote_body)
-    if title_same and body_same:
-        result = confirm_same_content_if_needed(page, chapter_no=chapter_no, options=options, local=local, log=log)
-        if result:
-            return result
-        msg = "经检测，本地版本与番茄版本一致，无需替换。"
+    draft_same = title_same and body_same
+    diff_path = None
+    git_repo = None
+    trace_dir = None
+    if draft_same and not options.is_publish_to_remote:
+        msg = "经检测，本地版本与编辑页草稿一致，无需替换。"
         log(msg)
         return ChapterSyncResult(ok=True, changed=False, published=False, message=msg)
 
-    log("经检测，本地版本与番茄版本有差异。")
-    diff_path, git_repo, trace_dir = record_diff_snapshot(
-        chapter_no=chapter_no,
-        local_title=local_title,
-        local_body=local.content,
-        remote_title=remote_title,
-        remote_body=remote_body,
-        direction=options.direction,
-        git_tracking=options.git_tracking,
-        log=log,
-    )
+    if draft_same:
+        log("编辑页草稿与本地一致；草稿不代表线上当前版本，仍会用本地内容完整覆盖后提交。")
+    else:
+        log("编辑页可能含有上次编辑残留，检测到它与本地版本有差异。")
+        cancel.checkpoint()
+        diff_path, git_repo, trace_dir = record_diff_snapshot(
+            chapter_no=chapter_no,
+            local_title=local_title,
+            local_body=local.content,
+            remote_title=remote_title,
+            remote_body=remote_body,
+            direction=options.direction,
+            git_tracking=options.git_tracking,
+            log=log,
+        )
+        cancel.checkpoint()
 
     if options.check_only:
         msg = "仅检查：已记录差异和 Git追踪，未替换。" if options.git_tracking else "仅检查：已检测到差异，未替换。"
@@ -125,6 +138,7 @@ def run_single_chapter_sync(
         git_repo=git_repo,
         trace_dir=trace_dir,
         log=log,
+        cancel=cancel,
     )
     if created_chapter and result.ok and created_chapter_numbers is not None:
         created_chapter_numbers.add(chapter_no)

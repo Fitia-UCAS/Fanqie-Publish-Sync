@@ -48,6 +48,12 @@ class SecurityError(AppError):
     pass
 
 
+class TaskCancelled(AppError):
+    """Raised when the user requests an immediate task cancellation."""
+
+    pass
+
+
 class ErrorStage(str, Enum):
     PREFLIGHT = "preflight"
     CREATOR = "creator"
@@ -72,6 +78,7 @@ __all__ = [
     "BrowserError",
     "ValidationError",
     "SecurityError",
+    "TaskCancelled",
     "ErrorStage",
 ]
 

@@ -24,8 +24,10 @@ window.renderFanqiePublisherPage = function renderFanqiePublisherPage(app) {
                 <label><input type="checkbox" id="apVerifyAfterPublish" ${cfg.verifyAfterPublish !== false ? 'checked' : ''}/> 列表校验</label>
                 <label><input type="checkbox" id="apDebugScreenshots" ${cfg.debugScreenshots !== false ? 'checked' : ''}/> 步骤截图</label>
                 <label><input type="checkbox" id="apFailureScreenshots" ${cfg.failureScreenshots !== false ? 'checked' : ''}/> 失败截图</label>
+                <label><input type="checkbox" id="apBrowserHeadless" ${cfg.browserHeadless !== false ? 'checked' : ''}/> 浏览器静默运行</label>
                 <label><input type="checkbox" id="apGitTracking" ${cfg.gitTracking !== false ? 'checked' : ''}/> Git追踪</label>
                 <label><input type="checkbox" id="apManualSchedule" ${cfg.manualSchedule ? 'checked' : ''}/> 手动定时</label>
+                <label><input type="checkbox" id="apClearAuthorNote" ${cfg.clearAuthorNote ? 'checked' : ''}/> 清空作者有话说</label>
               </div>
               <div class="manual-schedule-fields ${cfg.manualSchedule ? '' : 'hidden'}" id="apManualScheduleFields">
                 <div class="field schedule-date-field"><label>起始日期</label><input class="input" id="apScheduleStartDate" type="date" value="${app.attr(cfg.scheduleStartDate || '')}" /></div>

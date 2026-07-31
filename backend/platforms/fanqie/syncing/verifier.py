@@ -7,6 +7,7 @@ from backend.features.syncing.models import ChapterSyncOptions, ChapterSyncResul
 from backend.platforms.fanqie.syncing.submitter import submit_after_sync_save
 from backend.platforms.fanqie.syncing.preflight import wait_for_chapter_list_word_counts
 from backend.platforms.fanqie.browser.session import save_debug
+from backend.runtime.jobs.cancellation import CancellationGuard
 
 
 def verify_single_list_count(
@@ -16,6 +17,7 @@ def verify_single_list_count(
     chapter_manage_url: str,
     local: Chapter,
     log: Callable[[str], None] = print,
+    cancel: CancellationGuard | None = None,
 ) -> None:
     failures = wait_for_chapter_list_word_counts(
         page,
@@ -23,6 +25,7 @@ def verify_single_list_count(
         local_chapters={chapter_no: local},
         chapter_numbers=[chapter_no],
         log=log,
+        cancel=cancel,
     )
     if failures:
         raise RuntimeError(failures[chapter_no])
@@ -35,11 +38,12 @@ def confirm_same_content_if_needed(
     options: ChapterSyncOptions,
     local: Chapter,
     log: Callable[[str], None],
+    cancel: CancellationGuard | None = None,
 ) -> ChapterSyncResult | None:
     if not options.is_publish_to_remote:
         return None
     log("编辑页内容已与本地一致，继续执行发布确认。")
-    submit_after_sync_save(page, use_ai=options.use_ai, log=log)
+    submit_after_sync_save(page, use_ai=options.use_ai, log=log, cancel=cancel)
     save_debug(page, "after_sync_submit_same_content")
     if options.verify_after_publish:
         verify_single_list_count(
@@ -48,6 +52,7 @@ def confirm_same_content_if_needed(
             chapter_manage_url=options.chapter_manage_url,
             local=local,
             log=log,
+            cancel=cancel,
         )
     msg = "完成：编辑页内容已一致，并已发布确认。"
     log(msg)

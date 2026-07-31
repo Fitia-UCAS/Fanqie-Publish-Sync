@@ -40,6 +40,8 @@ class PublishChapters:
             verify_after_publish=request.verify_after_publish,
             debug_screenshots=request.debug_screenshots,
             failure_screenshots=request.failure_screenshots,
+            browser_headless=request.browser_headless,
+            clear_author_note=request.clear_author_note,
             git_tracking=request.git_tracking,
             auth_state_path=request.auth_state_path,
             manual_schedule_enabled=request.manual_schedule,

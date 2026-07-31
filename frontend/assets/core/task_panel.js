@@ -175,8 +175,9 @@
       }
       this.logs[targetPage].push(item);
       if (!box) return;
+      const shouldFollow = box.scrollHeight - box.scrollTop - box.clientHeight <= 24;
       box.appendChild(this.createLogLine(item));
-      box.scrollTop = box.scrollHeight;
+      if (shouldFollow) box.scrollTop = box.scrollHeight;
     },
     restoreLog(page) {
       const box = document.getElementById(`${page}Log`);
