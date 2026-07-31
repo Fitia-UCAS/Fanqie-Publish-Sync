@@ -17,6 +17,7 @@ class ChapterSyncResult:
     git_repo: Optional[Path] = None
     trace_dir: Optional[Path] = None
     error_stage: str = ""
+    platform_editor_count: int | None = None
 
 
 @dataclass(slots=True)

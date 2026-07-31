@@ -19,6 +19,7 @@ from backend.platforms.fanqie.pages.chapter_list import build_chapter_editor_ind
 from backend.platforms.fanqie.models import build_schedule_slots, describe_schedule_slots
 from backend.features.novel_processing.chapter_parser import chapters_by_number
 from backend.runtime.defaults import DEFAULT_CHAPTER_MANAGE_URL
+from backend.platforms.fanqie.content_verification import verify_remote_content_matches
 
 
 def run_multi_chapter_sync(
@@ -458,19 +459,44 @@ def _final_list_verify_if_needed(
         return
     latest_local_chapters = _local_chapters_by_number(novel_file, chapter_numbers)
     local_chapters.update(latest_local_chapters)
+    result_by_chapter = {
+        no: result
+        for no, result in zip(state.result_chapter_numbers, state.results)
+        if no in chapter_numbers
+    }
+    expected_counts = {
+        no: result.platform_editor_count
+        for no, result in result_by_chapter.items()
+        if result.platform_editor_count is not None
+    }
     log("正在进行最终章节列表校验，确认已发布列表字数是否全部更新...")
     failures = wait_for_chapter_list_word_counts(
         page,
         chapter_manage_url=chapter_manage_url,
         local_chapters=local_chapters,
         chapter_numbers=chapter_numbers,
+        expected_counts=expected_counts,
         log=log,
         cancel=cancel,
     )
+    for no in list(failures):
+        cancel.checkpoint()
+        content_failure = verify_remote_content_matches(
+            page,
+            chapter_no=no,
+            chapter_manage_url=chapter_manage_url,
+            local=local_chapters[no],
+            log=log,
+            cancel=cancel,
+        )
+        if content_failure is None:
+            failures.pop(no, None)
+        else:
+            failures[no] = content_failure
     if failures:
         _mark_list_verify_failures(failures=failures, state=state, log=log)
     else:
-        log("最终章节列表校验通过：本次范围内平台字数均已更新。")
+        log("最终同步校验通过：平台列表字数已闭环，或平台最新正文已与本地完全一致。")
 
 
 def _mark_list_verify_failures(*, failures: dict[int, str], state: MultiChapterSyncState, log: Callable[[str], None]) -> None:

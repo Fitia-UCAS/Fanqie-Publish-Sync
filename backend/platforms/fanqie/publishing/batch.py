@@ -13,6 +13,7 @@ from backend.platforms.fanqie.publishing.verifier import wait_for_chapter_list_w
 from backend.platforms.fanqie.browser.session import BrowserSession, save_failure_debug
 from backend.platforms.fanqie.models import build_schedule_slots, describe_schedule_slots
 from backend.runtime.defaults import DEFAULT_CHAPTER_MANAGE_URL
+from backend.platforms.fanqie.content_verification import verify_remote_content_matches
 
 
 def run_multi_chapter_publish(
@@ -181,18 +182,37 @@ def _final_list_verify_if_needed(
         return
     latest_local_chapters = load_local_chapters_by_number(novel_file, chapter_numbers)
     local_chapters.update(latest_local_chapters)
+    result_by_chapter = {result.chapter_no: result for result in results if result.chapter_no in chapter_numbers}
+    expected_counts = {
+        no: result.platform_editor_count
+        for no, result in result_by_chapter.items()
+        if result.platform_editor_count is not None
+    }
     log("正在进行最终章节列表校验，确认已发布列表字数是否全部更新...")
     failures = wait_for_chapter_list_word_counts(
         page,
         chapter_manage_url=options.chapter_manage_url,
         local_chapters=local_chapters,
         chapter_numbers=chapter_numbers,
+        expected_counts=expected_counts,
         log=log,
     )
+    for no in list(failures):
+        content_failure = verify_remote_content_matches(
+            page,
+            chapter_no=no,
+            chapter_manage_url=options.chapter_manage_url,
+            local=local_chapters[no],
+            log=log,
+        )
+        if content_failure is None:
+            failures.pop(no, None)
+        else:
+            failures[no] = content_failure
     if failures:
         _mark_list_verify_failures(failures=failures, results=results, log=log)
     else:
-        log("最终章节列表校验通过：本次成功提交的章节平台字数均已更新。")
+        log("最终发布校验通过：平台列表字数已闭环，或平台最新正文已与本地完全一致。")
 
 
 def _mark_list_verify_failures(

@@ -12,3 +12,4 @@ class ChapterPublishResult:
     message: str
     trace_dir: Path | None = None
     error_stage: str = ""
+    platform_editor_count: int | None = None

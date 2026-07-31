@@ -8,6 +8,7 @@ from backend.platforms.fanqie.syncing.submitter import submit_after_sync_save
 from backend.platforms.fanqie.syncing.preflight import wait_for_chapter_list_word_counts
 from backend.platforms.fanqie.browser.session import save_debug
 from backend.runtime.jobs.cancellation import CancellationGuard
+from backend.platforms.fanqie.content_verification import verify_remote_content_matches
 
 
 def verify_single_list_count(
@@ -16,6 +17,7 @@ def verify_single_list_count(
     chapter_no: int,
     chapter_manage_url: str,
     local: Chapter,
+    editor_count: int | None = None,
     log: Callable[[str], None] = print,
     cancel: CancellationGuard | None = None,
 ) -> None:
@@ -24,11 +26,21 @@ def verify_single_list_count(
         chapter_manage_url=chapter_manage_url,
         local_chapters={chapter_no: local},
         chapter_numbers=[chapter_no],
+        expected_counts={chapter_no: editor_count} if editor_count is not None else None,
         log=log,
         cancel=cancel,
     )
     if failures:
-        raise RuntimeError(failures[chapter_no])
+        content_failure = verify_remote_content_matches(
+            page,
+            chapter_no=chapter_no,
+            chapter_manage_url=chapter_manage_url,
+            local=local,
+            log=log,
+            cancel=cancel,
+        )
+        if content_failure:
+            raise RuntimeError(content_failure)
 
 
 def confirm_same_content_if_needed(

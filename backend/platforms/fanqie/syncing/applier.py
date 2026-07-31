@@ -137,6 +137,9 @@ def apply_local_to_remote(
     if options.clear_author_note:
         clear_author_note_and_save(page, log=log, cancel=cancel)
         cancel.checkpoint()
+    platform_editor_count = reported_body_word_count(page)
+    if platform_editor_count is not None:
+        log(f"平台编辑器正文字数：{platform_editor_count}；将用它确认章节列表是否刷新。")
     save_debug(page, "after_fill_before_save")
     log("正在保存草稿，等待番茄显示已保存...")
     click_save_draft(page, log=log, cancel=cancel)
@@ -159,6 +162,7 @@ def apply_local_to_remote(
             chapter_no=chapter_no,
             chapter_manage_url=options.chapter_manage_url,
             local=local,
+            editor_count=platform_editor_count,
             log=log,
             cancel=cancel,
         )
@@ -172,4 +176,5 @@ def apply_local_to_remote(
         diff_path=diff_path,
         git_repo=git_repo,
         trace_dir=trace_dir,
+        platform_editor_count=platform_editor_count,
     )

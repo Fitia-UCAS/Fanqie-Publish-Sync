@@ -21,13 +21,15 @@ def verify_chapter_list_word_counts(
     chapter_manage_url: str,
     local_chapters: dict[int, Chapter],
     chapter_numbers: list[int],
+    expected_counts: dict[int, int] | None = None,
     log: Callable[[str], None] = print,
 ) -> dict[int, str]:
     rows = build_chapter_row_index(page, chapter_manage_url, chapter_numbers, log=log)
     failures: dict[int, str] = {}
     for no in chapter_numbers:
         local = local_chapters[no]
-        expected = chapter_len(local.content)
+        editor_expected = (expected_counts or {}).get(no)
+        expected = int(editor_expected) if editor_expected is not None else chapter_len(local.content)
         row = rows.get(no)
         if not row:
             failures[no] = f"列表校验失败：没有在章节管理列表找到第 {no} 章。"
@@ -38,6 +40,15 @@ def verify_chapter_list_word_counts(
             continue
         actual_int = int(actual)
         delta = abs(actual_int - expected)
+        if editor_expected is not None:
+            if actual_int != expected:
+                failures[no] = (
+                    f"列表校验暂未闭环：第 {no} 章编辑器字数 {expected}，"
+                    f"章节列表字数 {actual_int}。"
+                )
+            else:
+                log(f"列表校验通过：第 {no} 章编辑器与章节列表均为 {actual_int} 字。")
+            continue
         tolerance = word_count_tolerance(expected)
         if not is_platform_count_compatible(actual_int, expected):
             failures[no] = (
@@ -58,6 +69,7 @@ def wait_for_chapter_list_word_counts(
     chapter_manage_url: str,
     local_chapters: dict[int, Chapter],
     chapter_numbers: list[int],
+    expected_counts: dict[int, int] | None = None,
     log: Callable[[str], None] = print,
     max_wait_seconds: int = 120,
     interval_seconds: int = 20,
@@ -92,6 +104,7 @@ def wait_for_chapter_list_word_counts(
             chapter_manage_url=chapter_manage_url,
             local_chapters=local_chapters,
             chapter_numbers=chapter_numbers,
+            expected_counts=expected_counts,
             log=log,
         )
         cancel.checkpoint()

@@ -71,6 +71,10 @@ def run_single_chapter_publish(
     if options.clear_author_note:
         clear_author_note_and_save(editor_page, log=log)
 
+    platform_editor_count = reported_body_word_count(editor_page)
+    if platform_editor_count is not None:
+        log(f"平台编辑器正文字数：{platform_editor_count}；将用它确认章节列表是否刷新。")
+
     log("正在保存草稿，等待番茄显示已保存...")
     click_save_draft(editor_page, log=log)
     save_debug(editor_page, f"chapter_{chapter_no:03d}_after_save")
@@ -79,11 +83,25 @@ def run_single_chapter_publish(
     publish_after_save(editor_page, use_ai=options.use_ai, log=log, scheduled_slot=options.schedule_for(chapter_no))
     save_debug(editor_page, f"chapter_{chapter_no:03d}_after_publish")
     if options.verify_after_publish:
-        verify_single_list_count(editor_page, chapter_no=chapter_no, chapter_manage_url=options.chapter_manage_url, local=local, log=log)
+        verify_single_list_count(
+            editor_page,
+            chapter_no=chapter_no,
+            chapter_manage_url=options.chapter_manage_url,
+            local=local,
+            editor_count=platform_editor_count,
+            log=log,
+        )
         save_debug(editor_page, f"chapter_{chapter_no:03d}_after_list_verify")
     msg = "完成：已自动新建、写入、保存并确认发布。"
     log(msg)
-    return ChapterPublishResult(ok=True, chapter_no=chapter_no, published=True, message=msg, trace_dir=trace_dir)
+    return ChapterPublishResult(
+        ok=True,
+        chapter_no=chapter_no,
+        published=True,
+        message=msg,
+        trace_dir=trace_dir,
+        platform_editor_count=platform_editor_count,
+    )
 
 
 def _ensure_body_written(page, body_loc, local: Chapter, *, log: Callable[[str], None]) -> None:
