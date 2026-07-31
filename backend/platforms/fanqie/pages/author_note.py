@@ -19,22 +19,29 @@ _EDITOR_SELECTORS = (
 
 
 def _author_note_is_empty(page: Page) -> bool:
-    actions = page.locator("button, [role='button'], a")
-    for index in range(locator_count_safe(actions)):
-        item = actions.nth(index)
+    labels = page.get_by_text("作者有话说", exact=True)
+    for index in range(locator_count_safe(labels)):
+        item = labels.nth(index)
         try:
             if not item.is_visible():
-                continue
-            text = "".join(item.inner_text().split())
-            if text not in {"添加", "+添加"}:
                 continue
             if item.evaluate(
                 r"""el => {
                     const compact = node => String(node.innerText || node.textContent || '').replace(/\s+/g, '').trim();
+                    const visible = node => {
+                        const rect = node.getBoundingClientRect();
+                        const style = window.getComputedStyle(node);
+                        return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+                    };
                     let root = el;
                     for (let depth = 0; root && depth <= 7; depth += 1, root = root.parentElement) {
                         const rootText = compact(root);
-                        if (rootText.includes('作者有话说') && rootText.length <= 1200) return true;
+                        if (!rootText.includes('作者有话说') || rootText.length > 1200) continue;
+                        const nodes = Array.from(root.querySelectorAll('button, [role="button"], a, span, div'));
+                        if (nodes.some(node => {
+                            const text = compact(node);
+                            return visible(node) && text.endsWith('添加') && text.length <= 3;
+                        })) return true;
                     }
                     return false;
                 }"""

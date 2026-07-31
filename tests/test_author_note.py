@@ -5,6 +5,35 @@ from types import SimpleNamespace
 from backend.platforms.fanqie.pages import author_note
 
 
+class _FakeLabels:
+    def __init__(self, label) -> None:
+        self._label = label
+
+    def count(self) -> int:
+        return 1
+
+    def nth(self, _index: int):
+        return self._label
+
+
+class _FakeLabel:
+    def is_visible(self) -> bool:
+        return True
+
+    def evaluate(self, _script: str) -> bool:
+        return True
+
+
+def test_author_note_empty_state_is_scoped_from_section_title() -> None:
+    calls: list[tuple[str, bool]] = []
+    page = SimpleNamespace(
+        get_by_text=lambda text, exact: calls.append((text, exact)) or _FakeLabels(_FakeLabel())
+    )
+
+    assert author_note._author_note_is_empty(page) is True
+    assert calls == [("作者有话说", True)]
+
+
 def test_clear_author_note_skips_section_that_only_offers_add(monkeypatch) -> None:
     events: list[str] = []
 
