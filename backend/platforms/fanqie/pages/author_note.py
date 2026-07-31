@@ -18,6 +18,33 @@ _EDITOR_SELECTORS = (
 )
 
 
+def _author_note_is_empty(page: Page) -> bool:
+    actions = page.locator("button, [role='button'], a")
+    for index in range(locator_count_safe(actions)):
+        item = actions.nth(index)
+        try:
+            if not item.is_visible():
+                continue
+            text = "".join(item.inner_text().split())
+            if text not in {"添加", "+添加"}:
+                continue
+            if item.evaluate(
+                r"""el => {
+                    const compact = node => String(node.innerText || node.textContent || '').replace(/\s+/g, '').trim();
+                    let root = el;
+                    for (let depth = 0; root && depth <= 7; depth += 1, root = root.parentElement) {
+                        const rootText = compact(root);
+                        if (rootText.includes('作者有话说') && rootText.length <= 1200) return true;
+                    }
+                    return false;
+                }"""
+            ):
+                return True
+        except Exception:
+            continue
+    return False
+
+
 def _author_note_editor(page: Page) -> Locator | None:
     candidates: list[tuple[int, int, Locator]] = []
     for selector in _EDITOR_SELECTORS:
@@ -32,7 +59,14 @@ def _author_note_editor(page: Page) -> Locator | None:
                         let node = el;
                         for (let depth = 0; node && depth <= 9; depth += 1, node = node.parentElement) {
                             const text = String(node.innerText || node.textContent || '').replace(/\s+/g, '').trim();
-                            if (text.includes('作者有话说') && text.length <= 2500) {
+                            const visible = child => {
+                                const rect = child.getBoundingClientRect();
+                                const style = window.getComputedStyle(child);
+                                return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+                            };
+                            const actions = Array.from(node.querySelectorAll('button, [role="button"], a'));
+                            const actionTexts = actions.filter(visible).map(child => String(child.innerText || child.textContent || '').replace(/\s+/g, '').trim());
+                            if (text.includes('作者有话说') && text.length <= 2500 && actionTexts.includes('保存') && actionTexts.includes('退出')) {
                                 return {depth, length: text.length};
                             }
                         }
@@ -164,12 +198,21 @@ def clear_author_note_and_save(
 ) -> None:
     cancel = cancel or CancellationGuard()
     cancel.checkpoint()
+    if _author_note_is_empty(page):
+        log("“作者有话说”当前为空，无需清理。")
+        return
     editor = _author_note_editor(page)
     if editor is None:
         _open_author_note(page, cancel)
         editor = _author_note_editor(page)
     if editor is None:
         raise RuntimeError("已勾选“清空作者有话说”，但编辑页中没有找到该输入区，已停止本章。")
+
+    if not _editor_value(editor).strip():
+        log("“作者有话说”当前为空，无需清理。")
+        _click_section_action(editor, "退出")
+        cancel.wait_page(page, 300)
+        return
 
     log("正在清空并单独保存“作者有话说”...")
     _clear_editor(page, editor, cancel)

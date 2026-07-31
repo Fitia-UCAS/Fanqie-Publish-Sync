@@ -36,10 +36,10 @@ window.renderFanqieSyncerPage = function renderFanqieSyncerPage(app) {
                 <label><input type="checkbox" id="syVerifyAfterPublish" ${cfg.verifyAfterPublish !== false ? 'checked' : ''}/> 列表校验</label>
                 <label><input type="checkbox" id="syDebugScreenshots" ${cfg.debugScreenshots !== false ? 'checked' : ''}/> 步骤截图</label>
                 <label><input type="checkbox" id="syFailureScreenshots" ${cfg.failureScreenshots !== false ? 'checked' : ''}/> 失败截图</label>
-                <label><input type="checkbox" id="syBrowserHeadless" ${cfg.browserHeadless !== false ? 'checked' : ''}/> 浏览器静默运行</label>
                 <label><input type="checkbox" id="syGitTracking" ${cfg.gitTracking !== false ? 'checked' : ''}/> Git追踪</label>
                 <label><input type="checkbox" id="syManualSchedule" ${cfg.manualSchedule ? 'checked' : ''}/> 手动定时</label>
                 <label><input type="checkbox" id="syClearAuthorNote" ${cfg.clearAuthorNote ? 'checked' : ''}/> 清空作者有话说</label>
+                <label><input type="checkbox" id="syBrowserHeadless" ${cfg.browserHeadless !== false ? 'checked' : ''}/> 浏览器静默运行</label>
               </div>
               <div class="manual-schedule-fields ${cfg.manualSchedule ? '' : 'hidden'}" id="syManualScheduleFields">
                 <div class="field schedule-date-field"><label>起始日期</label><input class="input" id="syScheduleStartDate" type="date" value="${app.attr(cfg.scheduleStartDate || '')}" /></div>

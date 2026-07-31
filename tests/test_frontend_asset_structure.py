@@ -62,6 +62,22 @@ def test_fanqie_pages_offer_browser_silent_mode_toggle() -> None:
     assert "browserHeadless:" in actions
 
 
+def test_sync_options_keep_the_expected_four_row_order() -> None:
+    sync_page = (FRONTEND_DIR / "assets" / "pages" / "fanqie_syncer.js").read_text(encoding="utf-8")
+    expected_ids = [
+        'id="syUseAi"',
+        'id="syVerifyAfterPublish"',
+        'id="syDebugScreenshots"',
+        'id="syFailureScreenshots"',
+        'id="syGitTracking"',
+        'id="syManualSchedule"',
+        'id="syClearAuthorNote"',
+        'id="syBrowserHeadless"',
+    ]
+
+    assert [sync_page.index(item) for item in expected_ids] == sorted(sync_page.index(item) for item in expected_ids)
+
+
 def test_frontend_core_scripts_load_before_app_shell() -> None:
     bundle = (FRONTEND_DIR / "assets" / "bundle.js").read_text(encoding="utf-8")
     app_start = bundle.index("const { pageTitles, defaultPage } = window.NovelConstants")
