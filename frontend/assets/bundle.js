@@ -432,6 +432,75 @@
 
 
 (function () {
+  window.NovelBookProfileMethods = {
+    renderBookProfileFields(prefix, cfg) {
+      const profiles = Array.isArray(this.state.config.bookProfiles) ? this.state.config.bookProfiles : [];
+      const selectedId = cfg.bookProfileId || this.state.config.activeBookId || '';
+      const selected = profiles.find((item) => item.id === selectedId);
+      return `
+        <div class="field"><label>小说来源</label>${this.filePicker(`${prefix}NovelFile`, selected?.novelFile || cfg.novelFile || '', `${prefix}ChooseNovel`, '选择小说来源')}</div>
+        <div class="field"><label>番茄作品</label>
+          <input type="hidden" id="${prefix}BookProfile" value="${this.attr(selectedId)}" />
+          <div class="file-picker ${selected ? '' : 'empty'}" data-book-picker="${prefix}">
+            <div class="file-meta"><span>已选择</span><strong id="${prefix}BookProfileName">${this.escape(selected?.name || (profiles.length ? '选择番茄作品' : '正在读取作品…'))}</strong></div>
+            <button class="ghost-btn" id="${prefix}ChooseBook" type="button">选择</button>
+          </div>
+        </div>
+        <input type="hidden" id="${prefix}BookName" value="${this.attr(selected?.name || cfg.expectedBookName || '')}" />
+        <input type="hidden" id="${prefix}Url" value="${this.attr(selected?.chapterManageUrl || cfg.chapterManageUrl || '')}" />`;
+    },
+    bindBookProfileControls(prefix, section) {
+      const button = document.getElementById(`${prefix}ChooseBook`);
+      const picker = button?.closest('.file-picker');
+      const profiles = Array.isArray(this.state.config.bookProfiles) ? this.state.config.bookProfiles : [];
+      const options = profiles.length
+        ? profiles.map((item) => ({ value: item.id, title: item.name }))
+        : [{ value: '__refresh__', title: '正在读取作品…' }];
+      this.bindFanqiePickerMenu(button, picker, options, async (profileId) => {
+        if (profileId === '__refresh__') return this.refreshFanqieBooks(section);
+        const oldId = this.state.config[section]?.bookProfileId || '';
+        const pendingSource = oldId ? '' : (document.getElementById(`${prefix}NovelFile`)?.value || '');
+        const result = await this.api.select_fanqie_book(profileId, pendingSource);
+        if (!result?.ok) return this.toast(result?.message || '作品切换失败。', 'warning', section);
+        this.state = await this.api.get_state();
+        this.render();
+      });
+      this.refreshFanqieBooks(section);
+    },
+    async refreshFanqieBooks(section) {
+      if (this._fanqieBooksLoading || this._fanqieBooksLoaded) return;
+      if (!this.api.check_login_state || !await this.api.check_login_state()) return;
+      this._fanqieBooksLoading = true;
+      const result = await this.api.list_fanqie_books();
+      this._fanqieBooksLoading = false;
+      if (!result?.ok) return;
+      this._fanqieBooksLoaded = true;
+      this.state = await this.api.get_state();
+      this.render();
+    },
+    async mapSelectedBookSource(prefix, section, path) {
+      const profileId = document.getElementById(`${prefix}BookProfile`)?.value || '';
+      if (!profileId || !path) return;
+      const result = await this.api.select_fanqie_book(profileId, path);
+      if (!result?.ok) return this.toast(result?.message || '小说来源绑定失败。', 'warning', section);
+      this.state = await this.api.get_state();
+      this.render();
+    },
+    validateBookProfilePayload(payload, page) {
+      const profiles = Array.isArray(this.state.config.bookProfiles) ? this.state.config.bookProfiles : [];
+      const profile = profiles.find((item) => item.id === payload.bookProfileId);
+      const matches = profile && profile.name === payload.expectedBookName
+        && profile.novelFile === payload.novelFile && profile.chapterManageUrl === payload.chapterManageUrl;
+      if (matches && payload.novelFile) return true;
+      this.toast('请选择番茄作品和小说来源。', 'warning', page);
+      this.setHeaderStatus('请选择作品和小说来源', 'error');
+      return false;
+    },
+  };
+})();
+
+
+(function () {
   window.NovelFanqieAccountMethods = {
     bindFanqiePickerMenu(button, picker, options, onSelect) {
       if (!button || !picker || picker.dataset.fanqiePickerBound === '1') return;
@@ -509,8 +578,8 @@
 (function () {
   window.NovelFanqieTaskMethods = {
     bindAutoPublishPage() {
-      this.bindChooseSource('apChooseNovel', 'auto_publish.novelFile', 'apNovelFile', '选择小说来源');
-      this.bindMaskedUrl('apUrl');
+      this.bindBookProfileControls('ap', 'auto_publish');
+      this.bindChooseSource('apChooseNovel', 'auto_publish.novelFile', 'apNovelFile', '选择小说来源', (path) => this.mapSelectedBookSource('ap', 'auto_publish', path));
       document.querySelectorAll('[data-auto-op]').forEach((button) => button.addEventListener('click', () => this.runAutoPublish(button.dataset.autoOp)));
       document.getElementById('apStop')?.addEventListener('click', () => this.stopTask('auto_publish_stop', 'auto_publish'));
       document.getElementById('apPause')?.addEventListener('click', () => this.stopTask('auto_publish_pause', 'auto_publish'));
@@ -519,6 +588,7 @@
     },
     async runAutoPublish(operation) {
       const payload = this.collectPublishPayload('ap', operation);
+      if (!this.validateBookProfilePayload(payload, 'auto_publish')) return;
       this.state.config.auto_publish = payload;
       await this.saveConfig();
       if (!await this.requireFanqieLogin()) return;
@@ -528,8 +598,8 @@
     },
 
     bindChapterSyncPage() {
-      this.bindChooseSource('syChooseNovel', 'chapter_sync.novelFile', 'syNovelFile', '选择小说来源');
-      this.bindMaskedUrl('syUrl');
+      this.bindBookProfileControls('sy', 'chapter_sync');
+      this.bindChooseSource('syChooseNovel', 'chapter_sync.novelFile', 'syNovelFile', '选择小说来源', (path) => this.mapSelectedBookSource('sy', 'chapter_sync', path));
       document.querySelectorAll('[data-sync-op]').forEach((button) => button.addEventListener('click', () => this.runChapterSync(button.dataset.syncOp)));
       document.getElementById('syStop')?.addEventListener('click', () => this.stopTask('chapter_sync_stop', 'chapter_sync'));
       document.getElementById('syPause')?.addEventListener('click', () => this.stopTask('chapter_sync_pause', 'chapter_sync'));
@@ -541,6 +611,7 @@
     },
     async runChapterSync(operation) {
       const payload = this.collectPublishPayload('sy', operation);
+      if (!this.validateBookProfilePayload(payload, 'chapter_sync')) return;
       if (!this.validateSyncConcurrency(payload.syncConcurrency)) return;
       this.state.config.chapter_sync = payload;
       await this.saveConfig();
@@ -573,24 +644,6 @@
       this.setHeaderStatus('请先登录番茄账号', 'error');
       return false;
     },
-    bindMaskedUrl(inputId) {
-      const input = document.getElementById(inputId);
-      if (!input) return;
-      const mask = '••••••••••••';
-      input.dataset.actualValue = input.value || '';
-      const conceal = () => {
-        if (input.dataset.actualValue) input.value = mask;
-      };
-      input.addEventListener('focus', () => {
-        input.value = input.dataset.actualValue || '';
-        input.select();
-      });
-      input.addEventListener('input', () => {
-        input.dataset.actualValue = input.value;
-      });
-      input.addEventListener('blur', conceal);
-      conceal();
-    },
     bindChooseSource(buttonId, configPath, inputId, emptyText, afterChoose) {
       const button = document.getElementById(buttonId);
       const picker = button?.closest('.file-picker');
@@ -621,6 +674,8 @@
     },
     collectPublishPayload(prefix, operation) {
       const payload = {
+        bookProfileId: document.getElementById(`${prefix}BookProfile`)?.value || '',
+        expectedBookName: document.getElementById(`${prefix}BookName`)?.value.trim() || '',
         novelFile: document.getElementById(`${prefix}NovelFile`)?.value || '',
         chapterManageUrl: document.getElementById(`${prefix}Url`)?.dataset.actualValue || document.getElementById(`${prefix}Url`)?.value || '',
         authStatePath: '',
@@ -663,14 +718,7 @@ window.renderFanqieSyncerPage = function renderFanqieSyncerPage(app) {
         <div class="fanqie-settings-card">
           <div class="settings-body">
             <div class="form-grid fanqie-form">
-              <div class="field">
-                <label>小说来源</label>
-                ${app.filePicker('syNovelFile', cfg.novelFile || '', 'syChooseNovel', '选择小说来源')}
-              </div>
-              <div class="field">
-                <label>章节管理 URL</label>
-                <input class="input" id="syUrl" type="password" value="${app.attr(cfg.chapterManageUrl || '')}" data-masked-url="true" placeholder="https://fanqienovel.com/..." autocomplete="off" spellcheck="false" />
-              </div>
+              ${app.renderBookProfileFields('sy', cfg)}
               <div class="field">
                 <label>并发线程</label>
                 <input class="input" id="sySyncConcurrency" type="number" min="1" max="4" value="${app.attr(concurrencyValue)}" placeholder="如：1–4（默认 2）" />
@@ -740,14 +788,7 @@ window.renderFanqiePublisherPage = function renderFanqiePublisherPage(app) {
         <div class="fanqie-settings-card">
           <div class="settings-body">
             <div class="form-grid fanqie-form">
-              <div class="field">
-                <label>小说来源</label>
-                ${app.filePicker('apNovelFile', cfg.novelFile || '', 'apChooseNovel', '选择小说来源')}
-              </div>
-              <div class="field">
-                <label>章节管理 URL</label>
-                <input class="input" id="apUrl" type="password" value="${app.attr(cfg.chapterManageUrl || '')}" data-masked-url="true" placeholder="https://fanqienovel.com/..." autocomplete="off" spellcheck="false" />
-              </div>
+              ${app.renderBookProfileFields('ap', cfg)}
               <div class="field-pair">
                 <div class="field"><label>起始章节</label><input class="input" id="apStart" type="number" min="1" value="${app.attr(cfg.start || 1)}" /></div>
                 <div class="field"><label>结束章节</label><input class="input" id="apEnd" type="number" min="1" value="${app.attr(cfg.end || 1)}" /></div>
@@ -829,6 +870,7 @@ window.renderFanqiePublisherPage = function renderFanqiePublisherPage(app) {
     ...window.NovelUiMethods,
     ...window.NovelTaskPanelMethods,
     ...window.NovelFanqieAccountMethods,
+    ...window.NovelBookProfileMethods,
     ...window.NovelFanqieTaskMethods,
     setConfigValue(path, value) {
       if (!path) return;

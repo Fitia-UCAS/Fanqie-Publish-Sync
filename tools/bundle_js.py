@@ -13,6 +13,7 @@ SCRIPTS = [
     "assets/core/form_controls.js",
     "assets/core/state_store.js",
     "assets/core/task_panel.js",
+    "assets/core/book_profiles.js",
     "assets/core/fanqie_task_actions.js",
     "assets/pages/fanqie_syncer.js",
     "assets/pages/fanqie_publisher.js",

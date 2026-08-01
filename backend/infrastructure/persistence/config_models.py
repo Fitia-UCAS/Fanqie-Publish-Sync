@@ -3,6 +3,15 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class BookProfile(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    id: str
+    name: str
+    novel_file: str = Field(alias="novelFile")
+    chapter_manage_url: str = Field(alias="chapterManageUrl")
+
+
 class TaskSettings(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
@@ -27,12 +36,16 @@ class TaskSettings(BaseModel):
     chapter_selection: str = Field(default="", alias="chapterSelection")
     sync_concurrency: int = Field(default=2, alias="syncConcurrency", ge=1, le=4)
     clear_author_note: bool = Field(default=False, alias="clearAuthorNote")
+    book_profile_id: str = Field(default="", alias="bookProfileId")
+    expected_book_name: str = Field(default="", alias="expectedBookName")
 
 
 class AppConfigModel(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     active_page: str = Field(default="auto_publish", alias="activePage")
+    active_book_id: str = Field(default="", alias="activeBookId")
+    book_profiles: list[BookProfile] = Field(default_factory=list, alias="bookProfiles")
     auto_publish: TaskSettings = Field(default_factory=TaskSettings)
     chapter_sync: TaskSettings = Field(default_factory=TaskSettings)
 

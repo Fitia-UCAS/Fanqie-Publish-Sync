@@ -60,6 +60,8 @@ class ConfigRepository:
         migrated = self._migrate_legacy_sections(data if isinstance(data, dict) else {})
         model = AppConfigModel(
             activePage=str(migrated.get("activePage") or "auto_publish"),
+            activeBookId=str(migrated.get("activeBookId") or ""),
+            bookProfiles=migrated.get("bookProfiles") if isinstance(migrated.get("bookProfiles"), list) else [],
             auto_publish=self._task_settings(migrated.get("auto_publish")),
             chapter_sync=self._task_settings(migrated.get("chapter_sync")),
         )

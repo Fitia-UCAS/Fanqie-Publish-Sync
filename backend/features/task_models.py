@@ -20,6 +20,8 @@ class ChapterTaskPayload(BaseModel):
     browser_headless: bool = Field(default=True, alias="browserHeadless")
     git_tracking: bool = Field(default=True, alias="gitTracking")
     auth_state_path: str = Field(default="", alias="authStatePath")
+    book_profile_id: str = Field(default="", alias="bookProfileId")
+    expected_book_name: str = Field(default="", alias="expectedBookName")
     manual_schedule: bool = Field(default=False, alias="manualSchedule")
     schedule_start_date: str = Field(default="", alias="scheduleStartDate")
     schedule_morning_time: str = Field(default="10:00", alias="scheduleMorningTime")

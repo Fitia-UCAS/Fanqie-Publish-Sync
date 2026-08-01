@@ -26,6 +26,8 @@ def test_publish_use_case_maps_payload_to_platform_runner(tmp_path: Path) -> Non
 
     result = PublishChapters(runner).execute(
         {
+            "bookProfileId": "book-1",
+            "expectedBookName": "测试小说",
             "novelFile": str(source),
             "chapterManageUrl": "https://fanqienovel.com/manage",
             "start": 1,
@@ -38,6 +40,7 @@ def test_publish_use_case_maps_payload_to_platform_runner(tmp_path: Path) -> Non
     assert received["novel_file"] == source
     assert received["chapters"] == [1, 2]
     assert received["use_ai"] is True
+    assert received["expected_book_name"] == "测试小说"
 
 
 def test_sync_use_case_maps_pull_to_remote_to_local(tmp_path: Path) -> None:
@@ -51,6 +54,8 @@ def test_sync_use_case_maps_pull_to_remote_to_local(tmp_path: Path) -> None:
 
     result = SyncChapters(runner).execute(
         {
+            "bookProfileId": "book-1",
+            "expectedBookName": "测试小说",
             "novelFile": str(source),
             "chapterManageUrl": "https://fanqienovel.com/manage",
             "start": 1,
@@ -78,6 +83,8 @@ def test_sync_use_case_passes_explicit_chapters_in_ascending_order(tmp_path: Pat
 
     result = SyncChapters(runner).execute(
         {
+            "bookProfileId": "book-1",
+            "expectedBookName": "测试小说",
             "novelFile": str(source),
             "chapterManageUrl": "https://fanqienovel.com/manage",
             "start": 1,

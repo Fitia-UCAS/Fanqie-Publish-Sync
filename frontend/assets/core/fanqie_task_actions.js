@@ -76,8 +76,8 @@
 (function () {
   window.NovelFanqieTaskMethods = {
     bindAutoPublishPage() {
-      this.bindChooseSource('apChooseNovel', 'auto_publish.novelFile', 'apNovelFile', '选择小说来源');
-      this.bindMaskedUrl('apUrl');
+      this.bindBookProfileControls('ap', 'auto_publish');
+      this.bindChooseSource('apChooseNovel', 'auto_publish.novelFile', 'apNovelFile', '选择小说来源', (path) => this.mapSelectedBookSource('ap', 'auto_publish', path));
       document.querySelectorAll('[data-auto-op]').forEach((button) => button.addEventListener('click', () => this.runAutoPublish(button.dataset.autoOp)));
       document.getElementById('apStop')?.addEventListener('click', () => this.stopTask('auto_publish_stop', 'auto_publish'));
       document.getElementById('apPause')?.addEventListener('click', () => this.stopTask('auto_publish_pause', 'auto_publish'));
@@ -86,6 +86,7 @@
     },
     async runAutoPublish(operation) {
       const payload = this.collectPublishPayload('ap', operation);
+      if (!this.validateBookProfilePayload(payload, 'auto_publish')) return;
       this.state.config.auto_publish = payload;
       await this.saveConfig();
       if (!await this.requireFanqieLogin()) return;
@@ -95,8 +96,8 @@
     },
 
     bindChapterSyncPage() {
-      this.bindChooseSource('syChooseNovel', 'chapter_sync.novelFile', 'syNovelFile', '选择小说来源');
-      this.bindMaskedUrl('syUrl');
+      this.bindBookProfileControls('sy', 'chapter_sync');
+      this.bindChooseSource('syChooseNovel', 'chapter_sync.novelFile', 'syNovelFile', '选择小说来源', (path) => this.mapSelectedBookSource('sy', 'chapter_sync', path));
       document.querySelectorAll('[data-sync-op]').forEach((button) => button.addEventListener('click', () => this.runChapterSync(button.dataset.syncOp)));
       document.getElementById('syStop')?.addEventListener('click', () => this.stopTask('chapter_sync_stop', 'chapter_sync'));
       document.getElementById('syPause')?.addEventListener('click', () => this.stopTask('chapter_sync_pause', 'chapter_sync'));
@@ -108,6 +109,7 @@
     },
     async runChapterSync(operation) {
       const payload = this.collectPublishPayload('sy', operation);
+      if (!this.validateBookProfilePayload(payload, 'chapter_sync')) return;
       if (!this.validateSyncConcurrency(payload.syncConcurrency)) return;
       this.state.config.chapter_sync = payload;
       await this.saveConfig();
@@ -140,24 +142,6 @@
       this.setHeaderStatus('请先登录番茄账号', 'error');
       return false;
     },
-    bindMaskedUrl(inputId) {
-      const input = document.getElementById(inputId);
-      if (!input) return;
-      const mask = '••••••••••••';
-      input.dataset.actualValue = input.value || '';
-      const conceal = () => {
-        if (input.dataset.actualValue) input.value = mask;
-      };
-      input.addEventListener('focus', () => {
-        input.value = input.dataset.actualValue || '';
-        input.select();
-      });
-      input.addEventListener('input', () => {
-        input.dataset.actualValue = input.value;
-      });
-      input.addEventListener('blur', conceal);
-      conceal();
-    },
     bindChooseSource(buttonId, configPath, inputId, emptyText, afterChoose) {
       const button = document.getElementById(buttonId);
       const picker = button?.closest('.file-picker');
@@ -188,6 +172,8 @@
     },
     collectPublishPayload(prefix, operation) {
       const payload = {
+        bookProfileId: document.getElementById(`${prefix}BookProfile`)?.value || '',
+        expectedBookName: document.getElementById(`${prefix}BookName`)?.value.trim() || '',
         novelFile: document.getElementById(`${prefix}NovelFile`)?.value || '',
         chapterManageUrl: document.getElementById(`${prefix}Url`)?.dataset.actualValue || document.getElementById(`${prefix}Url`)?.value || '',
         authStatePath: '',

@@ -10,14 +10,7 @@ window.renderFanqieSyncerPage = function renderFanqieSyncerPage(app) {
         <div class="fanqie-settings-card">
           <div class="settings-body">
             <div class="form-grid fanqie-form">
-              <div class="field">
-                <label>小说来源</label>
-                ${app.filePicker('syNovelFile', cfg.novelFile || '', 'syChooseNovel', '选择小说来源')}
-              </div>
-              <div class="field">
-                <label>章节管理 URL</label>
-                <input class="input" id="syUrl" type="password" value="${app.attr(cfg.chapterManageUrl || '')}" data-masked-url="true" placeholder="https://fanqienovel.com/..." autocomplete="off" spellcheck="false" />
-              </div>
+              ${app.renderBookProfileFields('sy', cfg)}
               <div class="field">
                 <label>并发线程</label>
                 <input class="input" id="sySyncConcurrency" type="number" min="1" max="4" value="${app.attr(concurrencyValue)}" placeholder="如：1–4（默认 2）" />

@@ -32,6 +32,7 @@ def test_sync_batch_reloads_chapter_before_each_operation(monkeypatch, tmp_path:
     received: list[Any] = []
 
     monkeypatch.setattr(sync_batch.BrowserSession, "open", lambda **kwargs: FakeSession())
+    monkeypatch.setattr(sync_batch, "verify_chapter_manage_book", lambda *args, **kwargs: "测试小说")
     monkeypatch.setattr(sync_batch, "_local_chapters_by_number", lambda novel_file, chapters: {1: initial})
     monkeypatch.setattr(sync_batch, "_index_editors_if_needed", lambda *args, **kwargs: {})
     monkeypatch.setattr(sync_batch, "get_local_chapter", lambda novel_file, chapter_no: latest)
@@ -63,6 +64,7 @@ def test_publish_batch_reloads_chapter_before_each_operation(monkeypatch, tmp_pa
     received: list[Any] = []
 
     monkeypatch.setattr(publish_batch.BrowserSession, "open", lambda **kwargs: FakeSession())
+    monkeypatch.setattr(publish_batch, "verify_chapter_manage_book", lambda *args, **kwargs: "测试小说")
     monkeypatch.setattr(
         publish_batch,
         "load_local_chapters_by_number",

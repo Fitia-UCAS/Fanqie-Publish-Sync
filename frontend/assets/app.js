@@ -34,6 +34,7 @@
     ...window.NovelUiMethods,
     ...window.NovelTaskPanelMethods,
     ...window.NovelFanqieAccountMethods,
+    ...window.NovelBookProfileMethods,
     ...window.NovelFanqieTaskMethods,
     setConfigValue(path, value) {
       if (!path) return;

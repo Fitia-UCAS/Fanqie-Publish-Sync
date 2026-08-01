@@ -75,3 +75,26 @@ def test_config_repository_preserves_sync_specific_and_browser_settings(tmp_path
     assert config["chapter_sync"]["browserHeadless"] is False
     assert config["chapter_sync"]["syncConcurrency"] == 4
     assert config["chapter_sync"]["clearAuthorNote"] is True
+
+
+def test_config_repository_preserves_book_profiles(tmp_path: Path) -> None:
+    repository = ConfigRepository(tmp_path / "config.json")
+    repository.save(
+        {
+            "activeBookId": "book-1",
+            "bookProfiles": [
+                {
+                    "id": "book-1",
+                    "name": "修仙：写个日记，女主们不对劲了",
+                    "novelFile": "novel.txt",
+                    "chapterManageUrl": "https://fanqienovel.com/main/writer/chapter-manage/123",
+                }
+            ],
+        }
+    )
+
+    config = repository.load()
+
+    assert config["activeBookId"] == "book-1"
+    assert config["bookProfiles"][0]["name"] == "修仙：写个日记，女主们不对劲了"
+    assert config["bookProfiles"][0]["novelFile"] == "novel.txt"

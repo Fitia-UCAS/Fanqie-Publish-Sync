@@ -24,6 +24,7 @@ from backend.runtime.logging import setup_logging
 from backend.runtime.paths import FANQIE_AUTH_STATE_FILE, LOG_FILE, get_state_paths, latest_log_file
 from backend.runtime.defaults import DEFAULT_CHAPTER_MANAGE_URL
 from backend.platforms.fanqie.actions.interactions import ensure_logged_in, goto_chapter_manage
+from backend.platforms.fanqie.book_identity import chapter_manage_book_id, collect_book_manage_entries
 from backend.platforms.fanqie.browser.session import BrowserSession, resolve_auth_state_file
 
 FANQIE_TASK_RESOURCE = "fanqie_browser"
@@ -191,6 +192,10 @@ class WebviewApi:
         return self._list_chapters(file_path)
 
     def auto_publish_run(self, payload: dict[str, Any]) -> bool:
+        profile_error = self._validate_book_profile_payload(payload)
+        if profile_error:
+            self._bridge.emit_log("auto_publish", profile_error, "warning")
+            return False
         if not FANQIE_AUTH_STATE_FILE.is_file():
             self._bridge.emit_log("auto_publish", "请先通过账号登录入口完成番茄登录。", "warning")
             return False
@@ -205,6 +210,10 @@ class WebviewApi:
         return self._list_chapters(file_path)
 
     def chapter_sync_run(self, payload: dict[str, Any]) -> bool:
+        profile_error = self._validate_book_profile_payload(payload)
+        if profile_error:
+            self._bridge.emit_log("chapter_sync", profile_error, "warning")
+            return False
         if not FANQIE_AUTH_STATE_FILE.is_file():
             self._bridge.emit_log("chapter_sync", "请先通过账号登录入口完成番茄登录。", "warning")
             return False
@@ -214,6 +223,94 @@ class WebviewApi:
             lambda callbacks: self._services.syncing.execute(payload, callbacks),
             resource=FANQIE_TASK_RESOURCE,
         )
+
+    def list_fanqie_books(self) -> dict[str, Any]:
+        if not FANQIE_AUTH_STATE_FILE.is_file():
+            return {"ok": False, "message": "请先登录番茄账号。"}
+        task_name = "fanqie_book_list"
+        conflict = self._start_fanqie_task(task_name)
+        if conflict:
+            return conflict
+        session: BrowserSession | None = None
+        try:
+            session = BrowserSession.open(
+                debug_category="auto_publish",
+                debug_enabled=False,
+                failure_debug_enabled=False,
+                headless=True,
+            )
+            books = collect_book_manage_entries(session.page, log=lambda _message: None)
+            profiles = self._config.get("bookProfiles")
+            existing_by_id = {
+                str(item.get("id") or ""): item
+                for item in profiles
+                if isinstance(item, dict) and item.get("id")
+            } if isinstance(profiles, list) else {}
+            existing_by_book_id = {
+                chapter_manage_book_id(str(item.get("chapterManageUrl") or "")): item
+                for item in profiles
+                if isinstance(item, dict) and chapter_manage_book_id(str(item.get("chapterManageUrl") or ""))
+            } if isinstance(profiles, list) else {}
+            old_active = existing_by_id.get(str(self._config.get("activeBookId") or ""), {})
+            old_active_book_id = chapter_manage_book_id(str(old_active.get("chapterManageUrl") or ""))
+            items = []
+            for book in books:
+                previous = existing_by_id.get(book["id"]) or existing_by_book_id.get(book["bookId"], {})
+                items.append({
+                    "id": book["id"],
+                    "name": book["name"],
+                    "novelFile": str(previous.get("novelFile") or ""),
+                    "chapterManageUrl": book["chapterManageUrl"],
+                })
+            self._config["bookProfiles"] = items
+            if old_active_book_id:
+                active = next((item for item in items if chapter_manage_book_id(item["chapterManageUrl"]) == old_active_book_id), None)
+                if active:
+                    self._config["activeBookId"] = active["id"]
+                    for section in ("auto_publish", "chapter_sync"):
+                        settings = self._config.get(section)
+                        if isinstance(settings, dict):
+                            settings.update({
+                                "bookProfileId": active["id"],
+                                "expectedBookName": active["name"],
+                                "novelFile": active["novelFile"],
+                                "chapterManageUrl": active["chapterManageUrl"],
+                            })
+            save_config(self._config)
+            return {"ok": True, "books": items}
+        except Exception as exc:
+            return {"ok": False, "message": str(exc)}
+        finally:
+            if session is not None:
+                session.close()
+            self._task_registry.finish_task(task_name)
+
+    def select_fanqie_book(self, profile_id: str, novel_file: str = "") -> dict[str, Any]:
+        target_id = str(profile_id or "").strip()
+        profiles = self._config.get("bookProfiles")
+        profile = next(
+            (item for item in profiles if isinstance(item, dict) and str(item.get("id") or "") == target_id),
+            None,
+        ) if isinstance(profiles, list) else None
+        if not profile:
+            return {"ok": False, "message": "没有找到所选番茄作品。"}
+        source = str(novel_file or "").strip()
+        if source:
+            profile["novelFile"] = source
+        self._config["activeBookId"] = target_id
+        for section in ("auto_publish", "chapter_sync"):
+            settings = self._config.get(section)
+            if not isinstance(settings, dict):
+                settings = {}
+                self._config[section] = settings
+            settings.update({
+                "bookProfileId": target_id,
+                "expectedBookName": str(profile.get("name") or ""),
+                "novelFile": str(profile.get("novelFile") or ""),
+                "chapterManageUrl": str(profile.get("chapterManageUrl") or ""),
+            })
+        save_config(self._config)
+        return {"ok": True, "profile": profile}
 
     def auto_publish_stop(self) -> bool:
         return self._tasks.stop("auto_publish", "auto_publish", "已请求终止发布，当前章节结束后会终止。")
@@ -257,6 +354,24 @@ class WebviewApi:
             "ok": False,
             "message": f"番茄平台任务 {blocking_task or '未知任务'} 正在运行，请先等待或终止当前任务。",
         }
+
+    def _validate_book_profile_payload(self, payload: dict[str, Any]) -> str:
+        profile_id = str(payload.get("bookProfileId") or "")
+        profiles = self._config.get("bookProfiles")
+        profile = next(
+            (item for item in profiles if isinstance(item, dict) and str(item.get("id") or "") == profile_id),
+            None,
+        ) if isinstance(profiles, list) else None
+        if not profile:
+            return "书籍安全校验失败：当前任务没有对应的已保存书籍配置，已禁止执行。"
+        expected = {
+            "expectedBookName": str(profile.get("name") or ""),
+            "novelFile": str(profile.get("novelFile") or ""),
+            "chapterManageUrl": str(profile.get("chapterManageUrl") or ""),
+        }
+        if any(str(payload.get(key) or "") != value for key, value in expected.items()):
+            return "书籍安全校验失败：书名、本地文件或章节 URL 已改动但尚未保存，已禁止执行。"
+        return ""
 
     def _remember_path(self, config_path: str, path: str) -> str:
         if path and config_path:

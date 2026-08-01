@@ -14,6 +14,7 @@ from backend.platforms.fanqie.browser.session import BrowserSession, save_failur
 from backend.platforms.fanqie.models import build_schedule_slots, describe_schedule_slots
 from backend.runtime.defaults import DEFAULT_CHAPTER_MANAGE_URL
 from backend.platforms.fanqie.content_verification import verify_remote_content_matches
+from backend.platforms.fanqie.book_identity import verify_chapter_manage_book
 
 
 def run_multi_chapter_publish(
@@ -21,6 +22,7 @@ def run_multi_chapter_publish(
     chapters: list[int],
     chapter_manage_url: str = DEFAULT_CHAPTER_MANAGE_URL,
     *,
+    expected_book_name: str = "",
     use_ai: bool = False,
     verify_after_publish: bool = True,
     debug_screenshots: bool = True,
@@ -59,7 +61,15 @@ def run_multi_chapter_publish(
             afternoon_count=schedule_afternoon_count,
         ),
     )
-    return run_multi_chapter_publish_with_options(novel_file=novel_file, chapters=chapters, options=options, log=log, stop_requested=stop_requested, pause_requested=pause_requested)
+    return run_multi_chapter_publish_with_options(
+        novel_file=novel_file,
+        chapters=chapters,
+        options=options,
+        expected_book_name=expected_book_name,
+        log=log,
+        stop_requested=stop_requested,
+        pause_requested=pause_requested,
+    )
 
 
 def run_multi_chapter_publish_with_options(
@@ -67,6 +77,7 @@ def run_multi_chapter_publish_with_options(
     novel_file: Path,
     chapters: list[int],
     options: ChapterPublishOptions,
+    expected_book_name: str = "",
     log: Callable[[str], None] = print,
     stop_requested: Callable[[], bool] | None = None,
     pause_requested: Callable[[], bool] | None = None,
@@ -101,6 +112,7 @@ def run_multi_chapter_publish_with_options(
             log("发布浏览器已静默运行，不会弹出网页窗口。")
         else:
             log("发布浏览器窗口已显示，可用于观察和排错。")
+        verify_chapter_manage_book(page, options.chapter_manage_url, expected_book_name, log=log)
         if not chapters:
             log("没有需要处理的章节。")
         per_chapter_options = replace(options, verify_after_publish=False) if options.verify_after_publish else options

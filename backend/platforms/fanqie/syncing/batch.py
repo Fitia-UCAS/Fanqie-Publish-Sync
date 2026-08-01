@@ -20,12 +20,14 @@ from backend.platforms.fanqie.models import build_schedule_slots, describe_sched
 from backend.features.novel_processing.chapter_parser import chapters_by_number
 from backend.runtime.defaults import DEFAULT_CHAPTER_MANAGE_URL
 from backend.platforms.fanqie.content_verification import verify_remote_content_matches
+from backend.platforms.fanqie.book_identity import verify_chapter_manage_book
 
 
 def run_multi_chapter_sync(
     novel_file: Path,
     chapters: list[int],
     chapter_manage_url: str = DEFAULT_CHAPTER_MANAGE_URL,
+    expected_book_name: str = "",
     use_ai: bool = False,
     check_only: bool = False,
     direction: str = "local_to_remote",
@@ -104,6 +106,7 @@ def run_multi_chapter_sync(
             synchronized_log("同步浏览器已静默运行，不会弹出网页窗口。")
         else:
             synchronized_log("同步浏览器窗口已显示，可用于观察和排错。")
+        verify_chapter_manage_book(page, chapter_manage_url, expected_book_name, log=synchronized_log)
         local_chapters = _local_chapters_by_number(novel_file, chapters)
         synchronized_log("正文实时读取已启用：每章操作前都会重新读取本地小说来源。")
         if options.direction == "local_to_remote":

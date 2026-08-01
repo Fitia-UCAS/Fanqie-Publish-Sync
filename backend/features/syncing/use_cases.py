@@ -21,6 +21,9 @@ class SyncChapters:
         url = request.chapter_manage_url.strip()
         if not url.startswith("http"):
             return TaskResult(False, "请填写番茄章节管理 URL。")
+        expected_book_name = request.expected_book_name.strip()
+        if not request.book_profile_id.strip() or not expected_book_name:
+            return TaskResult(False, "请先选择并保存书籍配置；同步前必须明确对应的番茄作品名。")
         operation = request.operation
         task_kind = request.task_kind
         chapters = request.chapters
@@ -39,6 +42,7 @@ class SyncChapters:
             novel_file=source,
             chapters=chapters,
             chapter_manage_url=url,
+            expected_book_name=expected_book_name,
             use_ai=request.use_ai,
             check_only=False,
             direction=request.direction,
