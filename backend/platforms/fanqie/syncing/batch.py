@@ -21,6 +21,7 @@ from backend.features.novel_processing.chapter_parser import chapters_by_number
 from backend.runtime.defaults import DEFAULT_CHAPTER_MANAGE_URL
 from backend.platforms.fanqie.content_verification import verify_remote_content_matches
 from backend.platforms.fanqie.book_identity import verify_chapter_manage_book
+from backend.platforms.fanqie.pages.editor import RetryableEditorError
 
 
 def run_multi_chapter_sync(
@@ -129,12 +130,13 @@ def run_multi_chapter_sync(
             options=options,
             editor_url_cache=editor_url_cache,
         )
+        chapters_without_editor = list(serial_chapters)
         if parallel_chapters and options.concurrency > 1:
             synchronized_log(
                 f"受控并发同步已启用：{min(options.concurrency, len(parallel_chapters))} 路；"
                 "每路使用独立浏览器会话，最多同时处理 4 章。"
             )
-            _process_indexed_chapters_concurrently(
+            retry_serially = _process_indexed_chapters_concurrently(
                 novel_file=novel_file,
                 chapters=parallel_chapters,
                 base_options=options,
@@ -144,11 +146,24 @@ def run_multi_chapter_sync(
                 cancel=cancel,
                 pause_requested=pause_requested,
             )
+            if retry_serially:
+                retry_set = set(retry_serially)
+                retry_serially = [chapter_no for chapter_no in chapters if chapter_no in retry_set]
+                serial_set = set(serial_chapters)
+                serial_chapters = [
+                    chapter_no
+                    for chapter_no in chapters
+                    if chapter_no in retry_set or chapter_no in serial_set
+                ]
+                synchronized_log(
+                    "并发编辑器未稳定或尚未启动的章节将自动改用单路处理："
+                    + "、".join(f"第 {chapter_no} 章" for chapter_no in retry_serially)
+                )
         else:
             serial_chapters = chapters
 
         if serial_chapters and not cancel.requested():
-            if parallel_chapters:
+            if parallel_chapters and chapters_without_editor:
                 synchronized_log("没有直接编辑入口的章节将改为串行处理，避免并发新建造成章节错位。")
             _process_chapters(
                 page=page,
@@ -251,7 +266,7 @@ def _process_indexed_chapters_concurrently(
     log: Callable[[str], None],
     cancel: CancellationGuard,
     pause_requested: Callable[[], bool] | None = None,
-) -> None:
+) -> list[int]:
     worker_count = max(1, min(4, int(base_options.concurrency), len(chapters)))
     per_chapter_options = (
         replace(base_options, verify_after_publish=False)
@@ -261,6 +276,8 @@ def _process_indexed_chapters_concurrently(
     pending: dict[Future[ChapterSyncResult], int] = {}
     next_index = 0
     completed = 0
+    retry_serially: list[int] = []
+    scheduling_stopped = False
 
     with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="fanqie-sync") as executor:
         try:
@@ -278,6 +295,7 @@ def _process_indexed_chapters_concurrently(
                 while (
                     next_index < len(chapters)
                     and len(pending) < worker_count
+                    and not scheduling_stopped
                     and not (pause_requested and pause_requested())
                 ):
                     chapter_no = chapters[next_index]
@@ -302,14 +320,28 @@ def _process_indexed_chapters_concurrently(
                     try:
                         result = future.result()
                     except TaskCancelled:
-                        continue
-                    state.append(chapter_no, result)
+                        raise
+                    if _is_retryable_parallel_result(result):
+                        retry_serially.append(chapter_no)
+                        if not scheduling_stopped:
+                            scheduling_stopped = True
+                            deferred = chapters[next_index:]
+                            if deferred:
+                                retry_serially.extend(deferred)
+                                next_index = len(chapters)
+                                log(
+                                    "检测到平台编辑器加载拥塞，已停止启动新的并发任务；"
+                                    f"剩余 {len(deferred)} 章将改用单路处理。"
+                                )
+                    else:
+                        state.append(chapter_no, result)
                     completed += 1
                     log(f"并发进度：第 {chapter_no} 章已结束（{completed}/{len(chapters)}）")
         except TaskCancelled:
             for future in pending:
                 future.cancel()
             raise
+    return retry_serially
 
 
 def _run_indexed_chapter_worker(
@@ -353,14 +385,19 @@ def _run_indexed_chapter_worker(
     except Exception as exc:
         if session is not None:
             save_failure_debug(session.page, f"chapter_{chapter_no:03d}_failed")
-        msg = f"失败：第 {chapter_no} 章｜{exc}"
+        retryable = isinstance(exc, RetryableEditorError)
+        msg = (
+            f"并发尝试未稳定：第 {chapter_no} 章｜{exc}；将转入单路处理。"
+            if retryable
+            else f"失败：第 {chapter_no} 章｜{exc}"
+        )
         chapter_log(msg)
         return ChapterSyncResult(
             ok=False,
             changed=False,
             published=False,
             message=msg,
-            error_stage=ErrorStage.CHAPTER,
+            error_stage=ErrorStage.EDITOR if retryable else ErrorStage.CHAPTER,
         )
     finally:
         if session is not None:
@@ -394,12 +431,12 @@ def _process_chapters(
         _wait_while_paused(pause_requested=pause_requested, stop_requested=stop_requested, log=log, label="同步")
         cancel.checkpoint()
         log(f"后台批量处理：第 {chapter_no} 章（{index}/{process_total}）")
-        try:
-            local_chapter = get_local_chapter(novel_file, chapter_no)
-            local_chapters[chapter_no] = local_chapter
-            state.append(
-                chapter_no,
-                run_single_chapter_sync(
+        max_attempts = 2 if base_options.is_publish_to_remote and editor_url_cache.get(chapter_no) else 1
+        for attempt in range(1, max_attempts + 1):
+            try:
+                local_chapter = get_local_chapter(novel_file, chapter_no)
+                local_chapters[chapter_no] = local_chapter
+                result = run_single_chapter_sync(
                     page=page,
                     novel_file=novel_file,
                     chapter_no=chapter_no,
@@ -409,26 +446,43 @@ def _process_chapters(
                     editor_url_cache=editor_url_cache,
                     created_chapter_numbers=created_chapter_numbers,
                     cancel=cancel,
-                ),
-            )
-        except TaskCancelled:
-            raise
-        except Exception as exc:
-            _record_chapter_failure(
-                page=page,
-                chapter_manage_url=base_options.chapter_manage_url,
-                chapter_no=chapter_no,
-                exc=exc,
-                state=state,
-                log=log,
-            )
+                )
+                state.append(chapter_no, result)
+                break
+            except TaskCancelled:
+                raise
+            except RetryableEditorError as exc:
+                if attempt < max_attempts:
+                    log(f"第 {chapter_no} 章单路编辑器仍未稳定，将重新打开本章再试一次：{exc}")
+                    cancel.wait_page(page, 750)
+                    continue
+                _record_chapter_failure(
+                    page=page,
+                    chapter_manage_url=base_options.chapter_manage_url,
+                    chapter_no=chapter_no,
+                    exc=exc,
+                    state=state,
+                    log=log,
+                )
+                break
+            except Exception as exc:
+                _record_chapter_failure(
+                    page=page,
+                    chapter_manage_url=base_options.chapter_manage_url,
+                    chapter_no=chapter_no,
+                    exc=exc,
+                    state=state,
+                    log=log,
+                )
+                break
 
 
 def _record_chapter_failure(*, page, chapter_manage_url: str, chapter_no: int, exc: Exception, state: MultiChapterSyncState, log: Callable[[str], None]) -> None:
     save_failure_debug(page, f"chapter_{chapter_no:03d}_failed")
     msg = f"失败：第 {chapter_no} 章｜{exc}"
     log(msg)
-    state.append(chapter_no, ChapterSyncResult(ok=False, changed=False, published=False, message=msg, error_stage=ErrorStage.CHAPTER))
+    error_stage = ErrorStage.EDITOR if isinstance(exc, RetryableEditorError) else ErrorStage.CHAPTER
+    state.append(chapter_no, ChapterSyncResult(ok=False, changed=False, published=False, message=msg, error_stage=error_stage))
     try:
         goto_chapter_manage(page, chapter_manage_url)
         dismiss_popups(page)
@@ -499,7 +553,14 @@ def _final_list_verify_if_needed(
     if failures:
         _mark_list_verify_failures(failures=failures, state=state, log=log)
     else:
-        log("最终同步校验通过：平台列表字数已闭环，或平台最新正文已与本地完全一致。")
+        failed_count = sum(1 for result in state.results if not result.ok)
+        if failed_count:
+            log(
+                f"成功章节最终校验通过：已提交成功的 {len(chapter_numbers)} 章均完成闭环；"
+                f"整体任务仍有 {failed_count} 章失败。"
+            )
+        else:
+            log("最终同步校验通过：平台列表字数已闭环，或平台最新正文已与本地完全一致。")
 
 
 def _mark_list_verify_failures(*, failures: dict[int, str], state: MultiChapterSyncState, log: Callable[[str], None]) -> None:
@@ -511,6 +572,10 @@ def _mark_list_verify_failures(*, failures: dict[int, str], state: MultiChapterS
                 state.results[index].message = reason
                 state.results[index].error_stage = ErrorStage.LIST_VERIFY
                 break
+
+
+def _is_retryable_parallel_result(result: ChapterSyncResult) -> bool:
+    return not result.ok and result.error_stage == ErrorStage.EDITOR
 
 
 def _stop_requested(stop_requested: Callable[[], bool] | None) -> bool:

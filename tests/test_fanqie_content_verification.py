@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from backend.features.syncing.models import ChapterSyncResult
 from backend.platforms.fanqie import content_verification
 from backend.platforms.fanqie.syncing import batch, preflight
+from backend.runtime.errors import ErrorStage
 
 
 def _local(body: str = "正文") -> SimpleNamespace:
@@ -113,3 +114,44 @@ def test_batch_count_failure_falls_back_to_remote_content(monkeypatch) -> None:
 
     assert captured["expected_counts"] == {1: 1001}
     assert result.ok is True
+
+
+def test_final_verify_does_not_hide_an_existing_chapter_failure(monkeypatch) -> None:
+    local = _local()
+    success = ChapterSyncResult(ok=True, changed=True, published=True, message="submitted")
+    failure = ChapterSyncResult(ok=False, changed=False, published=False, message="failed")
+    state = batch.MultiChapterSyncState([1, 2], [success, failure], [1, 2])
+    logs: list[str] = []
+
+    monkeypatch.setattr(batch, "_local_chapters_by_number", lambda *args, **kwargs: {1: local})
+    monkeypatch.setattr(batch, "wait_for_chapter_list_word_counts", lambda *args, **kwargs: {})
+
+    batch._final_list_verify_if_needed(
+        page=object(),
+        options=SimpleNamespace(should_final_list_verify=True),
+        chapter_manage_url="https://fanqienovel.com/manage",
+        local_chapters={1: local},
+        chapters=[1, 2],
+        novel_file=Path("novel.txt"),
+        state=state,
+        log=logs.append,
+    )
+
+    assert logs[-1] == "成功章节最终校验通过：已提交成功的 1 章均完成闭环；整体任务仍有 1 章失败。"
+
+
+def test_list_verification_failure_records_the_correct_error_stage() -> None:
+    state = batch.MultiChapterSyncState(
+        [1],
+        [ChapterSyncResult(ok=True, changed=True, published=True, message="submitted")],
+        [1],
+    )
+
+    batch._mark_list_verify_failures(
+        failures={1: "章节列表字数未刷新"},
+        state=state,
+        log=lambda _message: None,
+    )
+
+    assert state.results[0].ok is False
+    assert state.results[0].error_stage == ErrorStage.LIST_VERIFY

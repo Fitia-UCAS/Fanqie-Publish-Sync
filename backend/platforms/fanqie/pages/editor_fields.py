@@ -8,7 +8,20 @@ from playwright.sync_api import Locator, Page
 
 from backend.features.novel_processing.text_normalizer import normalize_novel_body, normalize_text
 from backend.platforms.fanqie.actions.interactions import locator_count_safe
-from backend.platforms.fanqie.text_utils import count_non_whitespace_chars
+from backend.platforms.fanqie.text_utils import count_platform_estimated_chars, is_platform_count_compatible
+
+
+class RetryableEditorError(RuntimeError):
+    """A pre-submission editor failure that is safe to retry in a fresh page."""
+
+
+class EditorFieldsNotReady(RetryableEditorError):
+    """The chapter editor shell loaded before all editable fields were ready."""
+
+
+class EditorWriteNotReady(RetryableEditorError):
+    """The editor remounted or rejected content before the draft was saved."""
+
 
 def all_input_like(page: Page) -> list[Locator]:
     selectors = [
@@ -23,16 +36,18 @@ def all_input_like(page: Page) -> list[Locator]:
         "[role='textbox']",
     ]
     result: list[Locator] = []
-    for sel in selectors:
-        loc = page.locator(sel)
-        count = locator_count_safe(loc)
-        for i in range(count):
-            item = loc.nth(i)
-            try:
-                if item.is_visible():
-                    result.append(item)
-            except Exception:
-                continue
+    # A single CSS union avoids returning the same editor several times through
+    # contenteditable, role=textbox and framework-specific selectors.  Besides
+    # being faster, this prevents React remounts between nine separate scans.
+    loc = page.locator(", ".join(selectors))
+    count = locator_count_safe(loc)
+    for i in range(count):
+        item = loc.nth(i)
+        try:
+            if item.is_visible():
+                result.append(item)
+        except Exception:
+            continue
     return result
 
 def element_text_or_value(loc: Locator) -> str:
@@ -77,16 +92,8 @@ def editor_body_counter_confirms(page: Page, text: str) -> bool:
     count = reported_body_word_count(page)
     if count is None:
         return False
-    expected = count_non_whitespace_chars(normalize_novel_body(text or ""))
-    if expected <= 0:
-        return True
-    if expected >= 400:
-        floor = max(200, int(expected * 0.45))
-    elif expected >= 80:
-        floor = max(40, int(expected * 0.45))
-    else:
-        floor = max(1, int(expected * 0.45))
-    return count >= floor
+    expected = count_platform_estimated_chars(normalize_novel_body(text or ""))
+    return is_platform_count_compatible(count, expected)
 
 
 def _input_meta(loc: Locator) -> dict:
@@ -152,12 +159,17 @@ def pick_title_and_editor(page: Page) -> Tuple[Locator, Locator]:
 def pick_chapter_no_title_and_editor(page: Page, *, require_chapter_no: bool = True) -> tuple[Locator | None, Locator, Locator]:
     candidates = all_input_like(page)
     if not candidates:
-        raise RuntimeError("未找到任何输入框或正文编辑器。请确认已经进入章节编辑页。")
+        raise EditorFieldsNotReady("未找到任何输入框或正文编辑器。请确认已经进入章节编辑页。")
 
     scored = []
     for loc in candidates:
         meta = _input_meta(loc)
-        txt = str(meta.get("text") or element_text_or_value(loc))
+        if not meta:
+            # The page remounted this candidate while it was being inspected.
+            # A later retry should enumerate the fresh DOM instead of waiting on
+            # or scoring a detached locator as an unknown field.
+            continue
+        txt = str(meta.get("text") or "")
         txt_norm = normalize_text(txt)
         tag = str(meta.get("tag") or "")
         editor_like = bool(meta.get("editorLike")) and tag not in {"input", "textarea"}
@@ -170,6 +182,8 @@ def pick_chapter_no_title_and_editor(page: Page, *, require_chapter_no: bool = T
             "editor_like": editor_like,
         })
 
+    if not scored:
+        raise EditorFieldsNotReady("编辑器输入区正在重新加载，暂时无法读取字段。")
 
     def body_score(item: dict) -> tuple[int, int, int, int, int]:
         meta = item["meta"]
@@ -207,7 +221,7 @@ def pick_chapter_no_title_and_editor(page: Page, *, require_chapter_no: bool = T
     title_items = sorted(non_body, key=title_score)
     title_item = next((item for item in title_items if title_score(item)[0] < 60), None)
     if not title_item:
-        raise RuntimeError("找到了正文编辑器，但未能识别标题输入框。")
+        raise EditorFieldsNotReady("找到了正文编辑器，但未能识别标题输入框。")
     title_loc = title_item["loc"]
 
     chapter_no_loc: Locator | None = None
@@ -232,7 +246,7 @@ def pick_chapter_no_title_and_editor(page: Page, *, require_chapter_no: bool = T
         if no_items:
             chapter_no_loc = min(no_items, key=_chapter_no_candidate_score)[1]["loc"]
         else:
-            raise RuntimeError("新建章节页已打开，但未能识别章节序号输入框。")
+            raise EditorFieldsNotReady("新建章节页已打开，但未能识别章节序号输入框。")
 
     return chapter_no_loc, title_loc, body_loc
 
@@ -243,7 +257,8 @@ def _chapter_no_candidate_score(pair) -> int:
 def get_remote_chapter(page: Page) -> tuple[str, str, Locator, Locator]:
     title_loc, body_loc = pick_title_and_editor(page)
     remote_title = element_text_or_value(title_loc).strip()
-
+    if not remote_title:
+        raise EditorFieldsNotReady("标题输入框尚未加载出章节标题。")
 
     remote_body = normalize_novel_body(element_text_or_value(body_loc))
     return remote_title, remote_body, title_loc, body_loc

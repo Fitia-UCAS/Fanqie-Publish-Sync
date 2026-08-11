@@ -64,6 +64,7 @@ class ErrorStage(str, Enum):
     CHAPTER = "chapter"
     NETWORK = "network"
     TIMEOUT = "timeout"
+    LIST_VERIFY = "list_verify"
     UNKNOWN = "unknown"
 
 
@@ -81,5 +82,4 @@ __all__ = [
     "TaskCancelled",
     "ErrorStage",
 ]
-
 

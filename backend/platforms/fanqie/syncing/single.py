@@ -8,7 +8,13 @@ from backend.platforms.fanqie.syncing.editor import create_sync_remote_chapter_e
 from backend.platforms.fanqie.syncing.local_source import Chapter, get_local_chapter
 from backend.features.syncing.models import ChapterSyncOptions, ChapterSyncResult
 from backend.platforms.fanqie.browser.session import save_debug
-from backend.platforms.fanqie.pages.editor import ChapterEditorNotFound, get_remote_chapter, open_chapter_editor
+from backend.platforms.fanqie.dialogs.editing import click_discard_stale_edit_if_present
+from backend.platforms.fanqie.pages.editor import (
+    ChapterEditorNotFound,
+    EditorFieldsNotReady,
+    get_remote_chapter,
+    open_chapter_editor,
+)
 from backend.features.novel_processing.text_normalizer import normalize_novel_body, same_text
 from backend.runtime.jobs.cancellation import CancellationGuard
 
@@ -47,7 +53,11 @@ def run_single_chapter_sync(
         )
         cancel.checkpoint()
         save_debug(page, "before_read")
-        remote_title, remote_body, title_loc, body_loc = get_remote_chapter(page)
+        remote_title, remote_body, title_loc, body_loc = _read_remote_chapter_with_recovery(
+            page,
+            log=log,
+            cancel=cancel,
+        )
         log(f"编辑页草稿：标题《{remote_title}》")
     except ChapterEditorNotFound as exc:
         if not _can_create_missing(options):
@@ -154,3 +164,35 @@ def run_single_chapter_sync(
 
 def _can_create_missing(options: ChapterSyncOptions) -> bool:
     return options.direction == "local_to_remote" and not options.check_only
+
+
+def _read_remote_chapter_with_recovery(
+    page,
+    *,
+    log: Callable[[str], None],
+    cancel: CancellationGuard,
+    max_attempts: int = 3,
+) -> tuple[str, str, object, object]:
+    """Briefly rescan Fanqie's asynchronously mounted editor fields."""
+    last_error: EditorFieldsNotReady | None = None
+    announced = False
+
+    for attempt in range(1, max(1, max_attempts) + 1):
+        cancel.checkpoint()
+        try:
+            return get_remote_chapter(page)
+        except EditorFieldsNotReady as exc:
+            last_error = exc
+
+        if not announced:
+            log("编辑器字段正在切换，短暂等待后重新识别...")
+            announced = True
+
+        click_discard_stale_edit_if_present(page, log=log, timeout_ms=500)
+        cancel.checkpoint()
+
+        if attempt < max_attempts:
+            cancel.wait_page(page, 350)
+
+    detail = str(last_error or "编辑器字段未就绪")
+    raise EditorFieldsNotReady(f"{detail} 短暂重试后仍未稳定。")

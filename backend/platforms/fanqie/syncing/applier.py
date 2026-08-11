@@ -12,15 +12,18 @@ from backend.platforms.fanqie.browser.session import save_debug, save_failure_de
 from backend.platforms.fanqie.history.diff_report import make_git_diff, save_history
 from backend.platforms.fanqie.history.tracker import track_snapshot
 from backend.platforms.fanqie.pages.editor import (
+    EditorWriteNotReady,
     click_save_draft,
-    editor_body_counter_confirms,
     element_text_or_value,
     fill_locator,
+    get_remote_chapter,
+    pick_title_and_editor,
     reported_body_word_count,
 )
-from backend.features.novel_processing.text_normalizer import normalize_novel_body
+from backend.features.novel_processing.text_normalizer import normalize_novel_body, same_text
 from backend.runtime.jobs.cancellation import CancellationGuard
 from backend.platforms.fanqie.pages.author_note import clear_author_note_and_save
+from backend.platforms.fanqie.dialogs.editing import click_discard_stale_edit_if_present
 
 
 _TRACKING_LOCK = Lock()
@@ -116,24 +119,39 @@ def apply_local_to_remote(
         fill_locator(page, chapter_no_loc, str(chapter_no), cancel=cancel)
         cancel.checkpoint()
     log("正在覆盖标题和完整正文...")
-    fill_locator(page, title_loc, local_title, cancel=cancel)
+    try:
+        fill_locator(page, title_loc, local_title, cancel=cancel)
+        cancel.checkpoint()
+        title_loc, body_loc = pick_title_and_editor(page)
+        fill_locator(page, body_loc, local.content, cancel=cancel)
+    except EditorWriteNotReady:
+        if created_chapter:
+            raise
+        log("编辑器在写入时发生切换，正在重新识别标题和正文输入区后重试...")
+        click_discard_stale_edit_if_present(page, log=log, timeout_ms=500)
+        cancel.wait_page(page, 350)
+        _remote_title, _remote_body, title_loc, body_loc = get_remote_chapter(page)
+        fill_locator(page, title_loc, local_title, cancel=cancel)
+        cancel.checkpoint()
+        title_loc, body_loc = pick_title_and_editor(page)
+        fill_locator(page, body_loc, local.content, cancel=cancel)
     cancel.checkpoint()
-    fill_locator(page, body_loc, local.content, cancel=cancel)
-    cancel.checkpoint()
+    title_loc, body_loc = pick_title_and_editor(page)
     written_body = normalize_novel_body(element_text_or_value(body_loc))
     expected_body = normalize_novel_body(local.content)
-    if expected_body and len(written_body) < max(200, int(len(expected_body) * 0.65)) and not editor_body_counter_confirms(page, local.content):
-        log("正文写入未刷新，正在重试写入正文...")
+    if expected_body and not same_text(written_body, expected_body):
+        log("正文全文回读尚未一致，正在重新识别编辑器并完整重写...")
+        _remote_title, _remote_body, title_loc, body_loc = get_remote_chapter(page)
+        fill_locator(page, title_loc, local_title, cancel=cancel)
+        cancel.checkpoint()
+        title_loc, body_loc = pick_title_and_editor(page)
         fill_locator(page, body_loc, local.content, cancel=cancel)
         cancel.checkpoint()
+        title_loc, body_loc = pick_title_and_editor(page)
         written_body = normalize_novel_body(element_text_or_value(body_loc))
-    if expected_body and len(written_body) < max(200, int(len(expected_body) * 0.65)):
-        if editor_body_counter_confirms(page, local.content):
-            count = reported_body_word_count(page)
-            log(f"正文编辑器字数统计已刷新：{count}，继续保存和同步。")
-        else:
-            save_failure_debug(page, "body_fill_failed")
-            raise RuntimeError("正文写入失败：番茄编辑器仍显示正文为空或字数过少。")
+    if expected_body and not same_text(written_body, expected_body):
+        save_failure_debug(page, "body_fill_failed")
+        raise EditorWriteNotReady("正文写入失败：编辑器全文回读与本地正文不一致。")
     if options.clear_author_note:
         clear_author_note_and_save(page, log=log, cancel=cancel)
         cancel.checkpoint()

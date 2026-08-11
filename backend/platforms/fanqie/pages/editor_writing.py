@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from playwright.sync_api import Locator, Page
 
-from backend.features.novel_processing.text_normalizer import normalize_text
+from backend.features.novel_processing.text_normalizer import normalize_novel_body
 from backend.platforms.fanqie.browser.session import save_debug
-from backend.platforms.fanqie.pages.editor_fields import editor_body_counter_confirms
+from backend.platforms.fanqie.pages.editor_fields import EditorWriteNotReady
 from backend.runtime.errors import TaskCancelled
 from backend.runtime.jobs.cancellation import CancellationGuard
 
@@ -13,18 +13,18 @@ def _wait_for_editable_ready(
     page: Page,
     loc: Locator,
     *,
-    timeout_ms: int = 8000,
+    timeout_ms: int = 4000,
     cancel: CancellationGuard | None = None,
-) -> None:
+) -> bool:
     cancel = cancel or CancellationGuard()
     cancel.checkpoint()
     try:
         loc.wait_for(state="visible", timeout=timeout_ms)
     except Exception:
-        pass
+        return False
     try:
-        loc.evaluate(
-            """el => new Promise(resolve => {
+        ready = loc.evaluate(
+            """(el, timeoutMs) => new Promise(resolve => {
                 const started = Date.now();
                 const ready = () => {
                     const rect = el.getBoundingClientRect();
@@ -33,31 +33,50 @@ def _wait_for_editable_ready(
                         el.getAttribute('contenteditable') === 'true' ||
                         String(el.className || '').toLowerCase().includes('prosemirror') ||
                         String(el.className || '').toLowerCase().includes('ql-editor') ||
+                        String(el.className || '').toLowerCase().includes('drafteditor') ||
+                        String(el.className || '').toLowerCase().includes('public-drafteditor') ||
                         el.getAttribute('role') === 'textbox';
                     return editable && rect.width > 0 && rect.height > 0 &&
                         style.visibility !== 'hidden' && style.display !== 'none' &&
                         !el.hasAttribute('disabled') && el.getAttribute('aria-disabled') !== 'true';
                 };
                 const tick = () => {
-                    if (ready() || Date.now() - started > 7500) {
+                    if (ready()) {
                         resolve(true);
+                        return;
+                    }
+                    if (Date.now() - started > timeoutMs) {
+                        resolve(false);
                         return;
                     }
                     requestAnimationFrame(tick);
                 };
                 tick();
-            })"""
+            })""",
+            max(250, timeout_ms - 250),
         )
     except Exception:
-        pass
+        return False
+    if not ready:
+        return False
     try:
         loc.evaluate("el => { el.scrollIntoView({block: 'center', inline: 'nearest'}); el.focus(); }")
     except Exception:
-        pass
+        return False
     cancel.wait_page(page, 300)
+    return True
 
 
-def _editable_text(loc: Locator) -> str:
+def _locator_text(loc: Locator) -> str:
+    try:
+        tag = str(loc.evaluate("el => (el.tagName || '').toLowerCase()"))
+    except Exception:
+        tag = ""
+    if tag in {"input", "textarea"}:
+        try:
+            return str(loc.input_value(timeout=1000) or "")
+        except Exception:
+            return ""
     try:
         value = loc.evaluate("el => el.innerText || el.textContent || ''")
         return str(value or "")
@@ -66,14 +85,9 @@ def _editable_text(loc: Locator) -> str:
 
 
 def _text_was_written(loc: Locator, text: str) -> bool:
-    expected = normalize_text(text)
-    current = normalize_text(_editable_text(loc))
-    if not expected:
-        return True
-    if len(expected) < 80:
-        return current == expected or expected in current
-
-    return len(current) >= max(80, int(len(expected) * 0.65)) and expected[:40] in current and expected[-40:] in current
+    expected = normalize_novel_body(text)
+    current = normalize_novel_body(_locator_text(loc))
+    return current == expected
 
 
 def _fill_editable_by_paste(
@@ -103,7 +117,7 @@ def _fill_editable_by_paste(
         cancel.wait_page(page, 120)
         page.keyboard.press("Backspace")
         cancel.wait_page(page, 350)
-        ok = _text_was_written(loc, text) or editor_body_counter_confirms(page, text)
+        ok = _text_was_written(loc, text)
         save_debug(page, "body_fill_paste_success" if ok else "body_fill_paste_failed")
         return ok
     except TaskCancelled:
@@ -170,7 +184,7 @@ def _fill_editable_by_dom(
         except Exception:
             pass
         cancel.wait_page(page, 350)
-        ok = _text_was_written(loc, text) or editor_body_counter_confirms(page, text)
+        ok = _text_was_written(loc, text)
         save_debug(page, "body_fill_dom_success" if ok else "body_fill_dom_failed")
         return ok
     except TaskCancelled:
@@ -200,7 +214,7 @@ def _fill_editable_by_keyboard(
         page.keyboard.press("Backspace")
         page.keyboard.insert_text(text)
         cancel.wait_page(page, 350)
-        ok = _text_was_written(loc, text) or editor_body_counter_confirms(page, text)
+        ok = _text_was_written(loc, text)
         save_debug(page, "body_fill_keyboard_success" if ok else "body_fill_keyboard_failed")
         return ok
     except TaskCancelled:
@@ -228,7 +242,10 @@ def fill_locator(
             loc.evaluate(
                 """el => el.isContentEditable || el.getAttribute('contenteditable') === 'true' ||
                         String(el.className || '').toLowerCase().includes('prosemirror') ||
-                        String(el.className || '').toLowerCase().includes('ql-editor')"""
+                        String(el.className || '').toLowerCase().includes('ql-editor') ||
+                        String(el.className || '').toLowerCase().includes('drafteditor') ||
+                        String(el.className || '').toLowerCase().includes('public-drafteditor') ||
+                        el.getAttribute('role') === 'textbox'"""
             )
         )
     except Exception:
@@ -242,9 +259,11 @@ def fill_locator(
             pass
         try:
             loc.fill(text, timeout=5000)
-            save_debug(page, "input_fill_success")
-            cancel.checkpoint()
-            return
+            cancel.wait_page(page, 100)
+            if _text_was_written(loc, text):
+                save_debug(page, "input_fill_success")
+                cancel.checkpoint()
+                return
         except TaskCancelled:
             raise
         except Exception:
@@ -253,21 +272,49 @@ def fill_locator(
             loc.evaluate(
                 """(el, text) => {
                     el.focus();
-                    el.value = text;
+                    const proto = el.tagName && el.tagName.toLowerCase() === 'textarea'
+                        ? window.HTMLTextAreaElement.prototype
+                        : window.HTMLInputElement.prototype;
+                    const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+                    if (setter) setter.call(el, text);
+                    else el.value = text;
                     el.dispatchEvent(new Event('input', {bubbles: true}));
                     el.dispatchEvent(new Event('change', {bubbles: true}));
                 }""",
                 text,
             )
-            save_debug(page, "input_fill_js_success")
-            return
+            cancel.wait_page(page, 100)
+            if _text_was_written(loc, text):
+                save_debug(page, "input_fill_js_success")
+                return
+        except TaskCancelled:
+            raise
         except Exception:
             pass
+        try:
+            loc.click(timeout=5000, force=True)
+            page.keyboard.press("Control+A")
+            page.keyboard.insert_text(text)
+            cancel.wait_page(page, 150)
+            if _text_was_written(loc, text):
+                save_debug(page, "input_fill_keyboard_success")
+                return
+        except TaskCancelled:
+            raise
+        except Exception:
+            pass
+        save_debug(page, "input_fill_all_methods_failed", force=True)
+        raise EditorWriteNotReady("标题或章节序号写入失败：页面未接收到输入内容。")
 
     if is_editable:
         for attempt in range(2):
             cancel.checkpoint()
-            _wait_for_editable_ready(page, loc, cancel=cancel)
+            if not _wait_for_editable_ready(page, loc, cancel=cancel):
+                if attempt == 0:
+                    cancel.wait_page(page, 500)
+                    continue
+                save_debug(page, "body_editor_not_ready", force=True)
+                raise EditorWriteNotReady("正文编辑器仍在切换，输入区尚未稳定可写。")
             if _fill_editable_by_paste(page, loc, text, cancel=cancel):
                 return
             if _fill_editable_by_dom(page, loc, text, cancel=cancel):
@@ -281,7 +328,7 @@ def fill_locator(
                 except Exception:
                     pass
         save_debug(page, "body_fill_all_methods_failed", force=True)
-        raise RuntimeError("正文编辑器写入失败：页面未接收到正文内容。")
+        raise EditorWriteNotReady("正文编辑器写入失败：页面未接收到正文内容。")
 
     try:
         loc.scroll_into_view_if_needed(timeout=5000)
@@ -292,21 +339,34 @@ def fill_locator(
         page.keyboard.press("Control+A")
         page.keyboard.press("Backspace")
         page.keyboard.insert_text(text)
-        return
+        cancel.wait_page(page, 150)
+        if _text_was_written(loc, text):
+            return
+    except TaskCancelled:
+        raise
     except Exception:
         pass
 
-    loc.evaluate(
-        """(el, text) => {
-            el.focus();
-            if ('value' in el) {
-                el.value = text;
-            } else {
-                el.innerText = text;
-                el.textContent = text;
-            }
-            el.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'insertText', data: text}));
-            el.dispatchEvent(new Event('change', {bubbles: true}));
-        }""",
-        text,
-    )
+    try:
+        loc.evaluate(
+            """(el, text) => {
+                el.focus();
+                if ('value' in el) {
+                    el.value = text;
+                } else {
+                    el.innerText = text;
+                    el.textContent = text;
+                }
+                el.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'insertText', data: text}));
+                el.dispatchEvent(new Event('change', {bubbles: true}));
+            }""",
+            text,
+        )
+        cancel.wait_page(page, 150)
+        if _text_was_written(loc, text):
+            return
+    except TaskCancelled:
+        raise
+    except Exception:
+        pass
+    raise EditorWriteNotReady("编辑器输入区已失效，页面未接收到输入内容。")
