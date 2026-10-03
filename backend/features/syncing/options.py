@@ -31,7 +31,7 @@ def make_chapter_sync_options(
         browser_headless=browser_headless,
         git_tracking=git_tracking,
         auth_state_path=auth_state_path,
-        concurrency=max(1, min(4, int(concurrency))),
+        concurrency=max(1, min(6, int(concurrency))),
         clear_author_note=bool(clear_author_note),
         schedule_slots=dict(schedule_slots or {}),
     )

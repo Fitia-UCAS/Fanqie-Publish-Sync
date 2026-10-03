@@ -43,7 +43,7 @@ class SyncTaskPayload(ChapterTaskPayload):
     operation: Literal["publish", "pull"] = "publish"
     task_kind: str = Field(default="chapter_sync", alias="taskKind")
     chapter_selection: str = Field(default="", alias="chapterSelection")
-    sync_concurrency: int = Field(default=2, alias="syncConcurrency", ge=1, le=4)
+    sync_concurrency: int = Field(default=2, alias="syncConcurrency", ge=1, le=6)
     clear_author_note: bool = Field(default=False, alias="clearAuthorNote")
 
     @field_validator("chapter_selection")

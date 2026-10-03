@@ -17,22 +17,25 @@ def test_parser_supports_chinese_and_full_width_chapter_numbers() -> None:
     assert [chapter.subtitle for chapter in chapters] == ["风起", "云涌"]
 
 
-@pytest.mark.parametrize(
-    ("text", "message"),
-    [
-        ("第1章 开始\n\n正文\n\n第1章 重复\n\n正文", "重复章节"),
-        ("第2章 在前\n\n正文\n\n第1章 在后\n\n正文", "章节顺序异常"),
-    ],
-)
-def test_single_file_rejects_duplicate_or_out_of_order_chapters(
-    tmp_path: Path,
-    text: str,
-    message: str,
-) -> None:
+def test_single_file_keeps_last_duplicate_chapter(tmp_path: Path) -> None:
     novel = tmp_path / "novel.txt"
-    novel.write_text(text, encoding="utf-8")
+    novel.write_text(
+        "第1章 开始\n\n正文一\n\n第2章 重复\n\n旧正文\n\n第2章 重复\n\n新正文\n\n第3章 收尾\n\n正文三",
+        encoding="utf-8",
+    )
 
-    with pytest.raises(ValueError, match=message):
+    chapters = parse_chapters_file(novel)
+
+    assert [chapter.number for chapter in chapters] == [1, 2, 3]
+    chapter_two = next(chapter for chapter in chapters if chapter.number == 2)
+    assert chapter_two.body == "新正文"
+
+
+def test_single_file_rejects_out_of_order_chapters(tmp_path: Path) -> None:
+    novel = tmp_path / "novel.txt"
+    novel.write_text("第2章 在前\n\n正文\n\n第1章 在后\n\n正文", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="章节顺序异常"):
         parse_chapters_file(novel)
 
 
@@ -47,11 +50,12 @@ def test_folder_source_orders_chapter_files_by_number(tmp_path: Path) -> None:
     assert [chapter.subtitle for chapter in chapters] == ["前章", "后章"]
 
 
-def test_multiple_sources_reject_duplicate_chapter_numbers_when_loaded(tmp_path: Path) -> None:
+def test_multiple_sources_keep_last_duplicate_chapter_when_loaded(tmp_path: Path) -> None:
     first = tmp_path / "first.txt"
     second = tmp_path / "second.txt"
-    first.write_text("第1章 第一版\n\n正文", encoding="utf-8")
-    second.write_text("第1章 第二版\n\n正文", encoding="utf-8")
+    first.write_text("第1章 第一版\n\n旧正文", encoding="utf-8")
+    second.write_text("第1章 第二版\n\n新正文", encoding="utf-8")
 
-    with pytest.raises(ValueError, match="重复章节"):
-        load_chapters_by_number(f"{first}\n{second}", [1])
+    loaded = load_chapters_by_number(f"{first}\n{second}", [1])
+
+    assert loaded[1].body == "新正文"

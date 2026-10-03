@@ -34,7 +34,7 @@ class TaskSettings(BaseModel):
     schedule_afternoon_time: str = Field(default="18:00", alias="scheduleAfternoonTime")
     schedule_afternoon_count: int = Field(default=0, ge=0, alias="scheduleAfternoonCount")
     chapter_selection: str = Field(default="", alias="chapterSelection")
-    sync_concurrency: int = Field(default=2, alias="syncConcurrency", ge=1, le=4)
+    sync_concurrency: int = Field(default=2, alias="syncConcurrency", ge=1, le=6)
     clear_author_note: bool = Field(default=False, alias="clearAuthorNote")
     book_profile_id: str = Field(default="", alias="bookProfileId")
     expected_book_name: str = Field(default="", alias="expectedBookName")

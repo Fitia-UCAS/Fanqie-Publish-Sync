@@ -51,12 +51,12 @@ def test_sync_payload_rejects_invalid_explicit_chapters() -> None:
 
 
 def test_sync_payload_limits_concurrency_to_safe_range() -> None:
-    payload = SyncTaskPayload.model_validate({"novelFile": "novel.txt", "syncConcurrency": 4})
+    payload = SyncTaskPayload.model_validate({"novelFile": "novel.txt", "syncConcurrency": 6})
 
-    assert payload.sync_concurrency == 4
+    assert payload.sync_concurrency == 6
 
     with pytest.raises(ValidationError):
-        SyncTaskPayload.model_validate({"novelFile": "novel.txt", "syncConcurrency": 5})
+        SyncTaskPayload.model_validate({"novelFile": "novel.txt", "syncConcurrency": 7})
 
 
 def test_sync_payload_explicit_chapters_take_priority_over_range() -> None:

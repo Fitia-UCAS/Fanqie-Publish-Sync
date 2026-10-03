@@ -252,7 +252,7 @@ def test_sync_page_uses_one_explicit_chapter_field_and_keeps_pull_controls() -> 
     assert "syPullResume" in actions_js
     assert "syPullStop" in actions_js
     assert "validateSyncConcurrency" in actions_js
-    assert "并发线程只能填写 1–4" in actions_js
+    assert "并发线程只能填写 1–6" in actions_js
     assert "payload.chapterSelection" in actions_js
     assert "payload.chapterOrder" not in actions_js
     assert syncer_js.index('id="syChapterSelection"') < syncer_js.index('id="syStart"')

@@ -120,9 +120,9 @@
     },
     validateSyncConcurrency(value) {
       const concurrency = Number(value);
-      if (Number.isInteger(concurrency) && concurrency >= 1 && concurrency <= 4) return true;
+      if (Number.isInteger(concurrency) && concurrency >= 1 && concurrency <= 6) return true;
       const input = document.getElementById('sySyncConcurrency');
-      this.toast('并发线程只能填写 1–4；如果要同步第 30 章，请把 30 填到“指定章节”。', 'warning', 'chapter_sync');
+      this.toast('并发线程只能填写 1–6；如果要同步第 30 章，请把 30 填到“指定章节”。', 'warning', 'chapter_sync');
       this.setHeaderStatus('请检查并发线程', 'error');
       input?.focus();
       input?.select();

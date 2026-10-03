@@ -108,7 +108,7 @@ def parse_chapters_file(path: str | Path) -> list[ChapterBlock]:
         chapter.source_path = file_path
     if not chapters:
         raise RuntimeError("没有解析到章节标题。请确认格式类似：第1章 标题")
-    ensure_unique_chapter_numbers(chapters, str(file_path))
+    chapters = deduplicate_chapters(chapters)
     ensure_increasing_chapter_numbers(chapters, str(file_path))
     return chapters
 
@@ -162,6 +162,14 @@ def ensure_unique_chapter_numbers(chapters: Iterable[ChapterBlock], source_name:
         raise ValueError(f"{source_name}中存在重复章节：{format_chapter_numbers(duplicates)}。为避免误覆盖，已停止。")
 
 
+def deduplicate_chapters(chapters: Iterable[TChapter]) -> list[TChapter]:
+    """同一章节号重复出现时保留最后出现的内容，并维持首次出现的位置。"""
+    deduped: dict[int, TChapter] = {}
+    for chapter in chapters:
+        deduped[chapter.number] = chapter
+    return list(deduped.values())
+
+
 def ensure_increasing_chapter_numbers(chapters: Iterable[ChapterBlock], source_name: str = "文本") -> None:
     numbers = [chapter.number for chapter in chapters]
     for previous, current in zip(numbers, numbers[1:]):
@@ -172,8 +180,7 @@ def ensure_increasing_chapter_numbers(chapters: Iterable[ChapterBlock], source_n
 
 
 def chapters_by_number(chapters: Iterable[TChapter], source_name: str = "文本") -> dict[int, TChapter]:
-    chapter_list = list(chapters)
-    ensure_unique_chapter_numbers(chapter_list, source_name)
+    chapter_list = deduplicate_chapters(chapters)
     return {chapter.number: chapter for chapter in chapter_list}
 
 
@@ -206,6 +213,7 @@ def read_chapter_source(source: str | Path) -> ChapterSourceSummary:
             chapters.extend(read_chapter_source(item).chapters)
         if not chapters:
             raise RuntimeError("没有从已选小说来源中识别到章节。")
+        chapters = deduplicate_chapters(chapters)
         return ChapterSourceSummary(source_path=paths[0], source_kind="multi", chapters=chapters)
 
     source_path = paths[0] if paths else Path(str(source or ""))
@@ -268,7 +276,7 @@ def _parse_single_chapter_file(path: Path) -> list[ChapterBlock]:
         return []
     blocks = parse_chapter_blocks(text)
     if blocks:
-        ensure_unique_chapter_numbers(blocks, str(path))
+        blocks = deduplicate_chapters(blocks)
         ensure_increasing_chapter_numbers(blocks, str(path))
         for block in blocks:
             block.source_path = path

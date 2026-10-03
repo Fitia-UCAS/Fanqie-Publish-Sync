@@ -134,7 +134,7 @@ def run_multi_chapter_sync(
         if parallel_chapters and options.concurrency > 1:
             synchronized_log(
                 f"受控并发同步已启用：{min(options.concurrency, len(parallel_chapters))} 路；"
-                "每路使用独立浏览器会话，最多同时处理 4 章。"
+                "每路使用独立浏览器会话，最多同时处理 6 章。"
             )
             retry_serially = _process_indexed_chapters_concurrently(
                 novel_file=novel_file,
@@ -267,7 +267,7 @@ def _process_indexed_chapters_concurrently(
     cancel: CancellationGuard,
     pause_requested: Callable[[], bool] | None = None,
 ) -> list[int]:
-    worker_count = max(1, min(4, int(base_options.concurrency), len(chapters)))
+    worker_count = max(1, min(6, int(base_options.concurrency), len(chapters)))
     per_chapter_options = (
         replace(base_options, verify_after_publish=False)
         if base_options.should_final_list_verify

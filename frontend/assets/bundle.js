@@ -622,9 +622,9 @@
     },
     validateSyncConcurrency(value) {
       const concurrency = Number(value);
-      if (Number.isInteger(concurrency) && concurrency >= 1 && concurrency <= 4) return true;
+      if (Number.isInteger(concurrency) && concurrency >= 1 && concurrency <= 6) return true;
       const input = document.getElementById('sySyncConcurrency');
-      this.toast('并发线程只能填写 1–4；如果要同步第 30 章，请把 30 填到“指定章节”。', 'warning', 'chapter_sync');
+      this.toast('并发线程只能填写 1–6；如果要同步第 30 章，请把 30 填到“指定章节”。', 'warning', 'chapter_sync');
       this.setHeaderStatus('请检查并发线程', 'error');
       input?.focus();
       input?.select();
@@ -709,7 +709,7 @@
 window.renderFanqieSyncerPage = function renderFanqieSyncerPage(app) {
   const cfg = app.state.config.chapter_sync || {};
   const configuredConcurrency = Number(cfg.syncConcurrency);
-  const concurrencyValue = Number.isInteger(configuredConcurrency) && configuredConcurrency >= 1 && configuredConcurrency <= 4
+  const concurrencyValue = Number.isInteger(configuredConcurrency) && configuredConcurrency >= 1 && configuredConcurrency <= 6
     ? configuredConcurrency
     : '';
   return `
@@ -721,7 +721,7 @@ window.renderFanqieSyncerPage = function renderFanqieSyncerPage(app) {
               ${app.renderBookProfileFields('sy', cfg)}
               <div class="field">
                 <label>并发线程</label>
-                <input class="input" id="sySyncConcurrency" type="number" min="1" max="4" value="${app.attr(concurrencyValue)}" placeholder="如：1–4（默认 2）" />
+                <input class="input" id="sySyncConcurrency" type="number" min="1" max="6" value="${app.attr(concurrencyValue)}" placeholder="如：1–6（默认 2）" />
               </div>
               <div class="field">
                 <label>指定章节</label>

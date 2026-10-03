@@ -1,7 +1,7 @@
 window.renderFanqieSyncerPage = function renderFanqieSyncerPage(app) {
   const cfg = app.state.config.chapter_sync || {};
   const configuredConcurrency = Number(cfg.syncConcurrency);
-  const concurrencyValue = Number.isInteger(configuredConcurrency) && configuredConcurrency >= 1 && configuredConcurrency <= 4
+  const concurrencyValue = Number.isInteger(configuredConcurrency) && configuredConcurrency >= 1 && configuredConcurrency <= 6
     ? configuredConcurrency
     : '';
   return `
@@ -13,7 +13,7 @@ window.renderFanqieSyncerPage = function renderFanqieSyncerPage(app) {
               ${app.renderBookProfileFields('sy', cfg)}
               <div class="field">
                 <label>并发线程</label>
-                <input class="input" id="sySyncConcurrency" type="number" min="1" max="4" value="${app.attr(concurrencyValue)}" placeholder="如：1–4（默认 2）" />
+                <input class="input" id="sySyncConcurrency" type="number" min="1" max="6" value="${app.attr(concurrencyValue)}" placeholder="如：1–6（默认 2）" />
               </div>
               <div class="field">
                 <label>指定章节</label>
